@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="متابعة حالة مشروع أرض عبدالجليل العقاري تحت الإنشاء، مراحل التنفيذ، التحديثات، الصور، وبيانات البيع."
+    />
+    <title>مشروع أرض عبدالجليل | متابعة الإنشاء</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa+Ink:wght@400;700&family=Cairo:wght@400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media = 'all'"
+    />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa+Ink:wght@400;700&family=Cairo:wght@400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
+    
+    <!-- External CSS Files -->
+    <link rel="stylesheet" href="static/css/base.css">
+    <link rel="stylesheet" href="static/css/layout.css">
+    <link rel="stylesheet" href="static/css/components.css">
+    <link rel="stylesheet" href="static/css/gallery.css">
+    <link rel="stylesheet" href="static/css/admin.css">
+    <link rel="stylesheet" href="static/css/assistant.css">
+    <link rel="stylesheet" href="static/css/client.css">
+    <link rel="stylesheet" href="static/css/rtl.css">
+  </head>
+  <body>
+    <!-- Navigation -->
+    <header class="site-header">
+      <nav class="nav container">
+        <div class="brand">
+          <strong>أرض</strong>
+          <span>عبدالجليل</span>
+        </div>
+        <div class="nav-links">
+          <a href="#timeline">المراحل</a>
+          <a href="#stats">الإحصائيات</a>
+          <a href="#gallery">المعرض</a>
+          <a href="#updates">آخر التحديثات</a>
+          <a href="#reservation-access">حجوزك</a>
+        </div>
+        <a href="https://wa.me/201234567890" class="nav-action">
+          واتساب
+        </a>
+      </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="hero-media">
+        <img src="media/facade.jpg" alt="واجهة مشروع أرض عبدالجليل" />
+      </div>
+      <div class="hero-content">
+        <h1>مشروع أرض عبدالجليل</h1>
+        <p>
+          مشروع سكني فاخر يقع في موقع استراتيجي حيوي، يتم تنفيذه بأعلى معايير
+          الجودة والتصميم العصري.
+        </p>
+        <div class="hero-actions">
+          <a href="#stats" class="btn primary">عرض التفاصيل</a>
+          <a href="#reservation-access" class="btn secondary">احجز الآن</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section id="stats" class="container">
+      <div class="section-title reveal">
+        <h2>أرقام المشروع</h2>
+        <p>
+          نظرة سريعة على إحصائيات المشروع الرئيسية ومؤشرات الأداء.
+        </p>
+      </div>
+      <div class="stats-grid" id="statsGrid">
+        <!-- Stats will be rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Timeline Section -->
+    <section id="timeline" class="container">
+      <div class="section-title reveal">
+        <h2>المراحل الزمنية للمشروع</h2>
+        <p>
+          متابعة تفصيلية لمراحل تنفيذ المشروع من البداية حتى التسليم.
+        </p>
+      </div>
+      <div class="timeline-grid" id="timelineGrid">
+        <!-- Timeline will be rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Gallery Section -->
+    <section id="gallery" class="container">
+      <div class="section-title reveal">
+        <h2>معرض المشروع</h2>
+        <p>
+          استكشف صور وفيديوهات عالية الجودة للمشروع من جميع الزوايا.
+        </p>
+      </div>
+      <div class="gallery-filters reveal">
+        <button class="filter-btn active" data-filter="all">الكل</button>
+        <button class="filter-btn" data-filter="exterior">الواجهات</button>
+        <button class="filter-btn" data-filter="apartment-plan">مخططات الشقق</button>
+        <button class="filter-btn" data-filter="video">الفيديوهات</button>
+      </div>
+      <div class="gallery-grid" id="galleryGrid">
+        <!-- Gallery will be rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Latest Updates Section -->
+    <section id="updates" class="container">
+      <div class="section-title reveal">
+        <h2>آخر التحديثات</h2>
+        <p>
+          متابعة مستمرة لأحدث تطورات المشروع والإنجازات المحققة.
+        </p>
+      </div>
+      <div class="updates-grid" id="updatesGrid">
+        <!-- Updates will be rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Apartment Models Section -->
+    <section id="apartment-models" class="container">
+      <div class="section-title reveal">
+        <h2>نماذج الشقق</h2>
+        <p>
+          استكشف نماذج الشقق المتاحة مع تفاصيل كاملة عن المساحات والمواصفات.
+        </p>
+      </div>
+      <div class="apartment-models-grid">
+        <article class="apartment-card reveal">
+          <img src="media/apartment-1.jpg" alt="شقة رقم 1" />
+          <div class="apartment-info">
+            <h3>شقة رقم 1</h3>
+            <div class="model-specs">
+              <span class="spec-item">137 متر — بحري قبلي</span>
+            </div>
+            <p>نموذج فاخر بمساحة واسعة وإطلالة بحرية</p>
+          </div>
+        </article>
+        <article class="apartment-card reveal">
+          <img src="media/apartment-2.jpg" alt="شقة رقم 2" />
+          <div class="apartment-info">
+            <h3>شقة رقم 2</h3>
+            <div class="model-specs">
+              <span class="spec-item">125 متر — بحري</span>
+            </div>
+            <p>تصميم عملي مع مساحة مثالية للعائلات</p>
+          </div>
+        </article>
+        <article class="apartment-card reveal">
+          <img src="media/apartment-3.jpg" alt="شقة رقم 3" />
+          <div class="apartment-info">
+            <h3>شقة رقم 3</h3>
+            <div class="model-specs">
+              <span class="spec-item">120 متر — قبلي</span>
+            </div>
+            <p>نموذج مناسب للعائلات بتقسيم واضح ومساحات عملية</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Reservation Access Section -->
+    <section id="reservation-access" class="reservation-section">
+      <div class="reservation-shell container">
+        <div class="reservation-heading reveal">
+          <div>
+            <span class="reservation-kicker">بوابة الحجز الخاصة</span>
+            <h2>بوابة الحجز الخاصة وخريطة توفر الشقق</h2>
+          </div>
+          <p>
+            مركز تحكم فاخر للحجوزات والمدفوعات: يدخل العميل كوده الخاص ليرى
+            وحدته فقط، بينما يدير المكتب الشقق والعملاء والمدفوعات من مساحة
+            الإدارة.
+          </p>
+        </div>
+
+        <!-- Portal Tabs -->
+        <div class="portal-tabs reveal">
+          <button
+            class="portal-tab active"
+            type="button"
+            id="clientPortalTab"
+            data-portal-tab="client"
+            role="tab"
+            aria-selected="true"
+            aria-controls="clientPortalPanel"
+          >
+            الدخول بالكود
+          </button>
+          <button
+            class="portal-tab"
+            type="button"
+            id="adminPortalTab"
+            data-portal-tab="admin"
+            role="tab"
+            aria-selected="false"
+            aria-controls="adminPortalPanel"
+          >
+            لوحة المكتب
+          </button>
+          <button
+            class="portal-tab"
+            type="button"
+            id="updatesAdminTab"
+            data-portal-tab="updates-admin"
+            role="tab"
+            aria-selected="false"
+            aria-controls="projectUpdatesAdminPanel"
+          >
+            إدارة التحديثات
+          </button>
+        </div>
+
+        <!-- Portal Panels -->
+        <div class="portal-panels">
+          <!-- Client Portal Panel -->
+          <div
+            class="portal-panel active"
+            id="clientPortalPanel"
+            role="tabpanel"
+            aria-labelledby="clientPortalTab"
+          >
+            <div class="client-access-layout">
+              <article class="client-access-card reveal" dir="rtl">
+                <h3>الدخول الخاص ببيانات الحجز</h3>
+                <p>
+                  أدخل كود الحجز الخاص بك للاطلاع على تفاصيل الشقة، حالة الحجز، والمدفوعات الخاصة بك.
+                </p>
+
+                <form class="code-form" id="clientCodeForm" novalidate>
+                  <div class="form-field">
+                    <label for="reservationCode">كود الحجز</label>
+                    <input
+                      id="reservationCode"
+                      name="reservationCode"
+                      type="text"
+                      inputmode="text"
+                      autocomplete="one-time-code"
+                      placeholder="مثال: GEO-HS-8F42X"
+                      aria-describedby="clientCodeMessage"
+                    />
+                  </div>
+                  <button
+                    class="btn primary"
+                    type="submit"
+                    id="clientCodeButton"
+                  >
+                    عرض بيانات الحجز
+                  </button>
+                  <div
+                    class="access-error"
+                    id="clientCodeMessage"
+                    role="status"
+                    aria-live="polite"
+                  ></div>
+                  <div
+                    class="access-success"
+                    id="clientSuccessMessage"
+                    role="status"
+                    aria-live="polite"
+                  ></div>
+                </form>
+
+                <div class="portal-note">
+                  يتم عرض بيانات الحجز المطابقة للكود فقط. في النسخة الحقيقية
+                  يتم استبدال هذا التحقق بطلب آمن إلى الخادم.
+                </div>
+              </article>
+
+              <article class="access-preview reveal">
+                <h3>تفاصيل وحدتك ومدفوعاتك في مساحة واحدة.</h3>
+                <p>
+                  ملخص دقيق للوحدة المختارة، المدفوع، المتبقي، وسجل الدفعات بدون
+                  كشف بيانات أي عميل آخر.
+                </p>
+              </article>
+            </div>
+
+            <div
+              class="private-dashboard"
+              id="clientDashboard"
+              aria-live="polite"
+            ></div>
+          </div>
+
+          <!-- Admin Portal Panel -->
+          <div
+            class="portal-panel"
+            id="adminPortalPanel"
+            role="tabpanel"
+            aria-labelledby="adminPortalTab"
+          >
+            <article class="admin-gate reveal" id="adminGate">
+              <h3>تسجيل دخول الإدارة</h3>
+              <p>
+                لوحة الإدارة محمية بحساب مسؤول، بينما يظل دخول العملاء منفصلاً بكود الحجز فقط.
+              </p>
+
+              <form class="admin-code-form" id="adminCodeForm" novalidate>
+                <div class="form-field">
+                  <label for="adminEmail">البريد الإلكتروني</label>
+                  <input
+                    id="adminEmail"
+                    name="adminEmail"
+                    type="email"
+                    autocomplete="username"
+                    placeholder="admin@example.com"
+                    aria-describedby="adminCodeMessage"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="adminCode">كلمة المرور</label>
+                  <input
+                    id="adminCode"
+                    name="adminCode"
+                    type="password"
+                    autocomplete="current-password"
+                    placeholder="••••••••••"
+                    aria-describedby="adminCodeMessage"
+                  />
+                </div>
+                <button class="btn primary" type="submit" id="adminCodeButton">
+                  تسجيل الدخول
+                </button>
+                <div
+                  class="access-error"
+                  id="adminCodeMessage"
+                  role="status"
+                  aria-live="polite"
+                ></div>
+              </form>
+            </article>
+
+            <div class="admin-dashboard" id="adminDashboard">
+              <div class="admin-topline">
+                <div>
+                  <h3>خريطة توفر الشقق</h3>
+                  <p>
+                    خريطة توفر الشقق داخل المبنى، مع متابعة الحجز والمدفوعات لكل
+                    وحدة.
+                  </p>
+                </div>
+                <div class="contact-actions">
+                  <button
+                    class="btn secondary"
+                    type="button"
+                    id="refreshAdminButton"
+                  >
+                    تحديث الحسابات
+                  </button>
+                  <button
+                    class="btn secondary"
+                    type="button"
+                    id="exportClientsButton"
+                  >
+                    تصدير العملاء Excel
+                  </button>
+                  <button
+                    class="btn secondary"
+                    type="button"
+                    id="exportPaymentsButton"
+                  >
+                    تصدير المدفوعات Excel
+                  </button>
+                  <button
+                    class="btn secondary"
+                    type="button"
+                    id="exportApartmentsButton"
+                  >
+                    تصدير الشقق Excel
+                  </button>
+                  <button
+                    class="btn secondary"
+                    type="button"
+                    id="exportInstallmentsButton"
+                  >
+                    تصدير الأقساط Excel
+                  </button>
+                  <button
+                    class="btn secondary"
+                    type="button"
+                    id="exportFinancialButton"
+                  >
+                    تصدير التقرير المالي Excel
+                  </button>
+                </div>
+              </div>
+
+              <div class="admin-overview" id="adminOverview"></div>
+              <div class="admin-floor-plan" id="buildingMap"></div>
+              <div class="admin-selected-unit" id="selectedUnitPanel"></div>
+            </div>
+          </div>
+
+          <!-- Project Updates Admin Panel -->
+          <div
+            class="portal-panel"
+            id="projectUpdatesAdminPanel"
+            role="tabpanel"
+            aria-labelledby="updatesAdminTab"
+          >
+            <div class="admin-section container">
+              <div class="section-title reveal">
+                <h2>إدارة آخر التحديثات</h2>
+                <p>
+                  إضافة وتعديل وحذف تحديثات المشروع مع إدارة الوسائط المرئية والنشر.
+                </p>
+              </div>
+
+              <div class="admin-actions reveal">
+                <button class="btn primary" onclick="showUpdateForm()">
+                  <span>+</span> إضافة تحديث جديد
+                </button>
+              </div>
+
+              <div class="admin-table-container reveal">
+                <table class="admin-updates-table" id="updatesTable">
+                  <thead>
+                    <tr>
+                      <th>العنوان</th>
+                      <th>المرحلة</th>
+                      <th>التاريخ</th>
+                      <th>نوع الوسائط</th>
+                      <th>الحالة</th>
+                      <th>ترتيب الظهور</th>
+                      <th>الإجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody id="updatesTableBody">
+                    <!-- Updates will be loaded here -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Update Form Modal -->
+              <div class="modal-overlay" id="updateFormModal" style="display: none;">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h3 id="updateFormTitle">إضافة تحديث جديد</h3>
+                    <button class="modal-close" onclick="hideUpdateForm()">&times;</button>
+                  </div>
+                  <form class="update-form" id="updateForm" onsubmit="saveUpdate(event)">
+                    <div class="form-grid">
+                      <div class="form-field">
+                        <label for="updateTitle">عنوان التحديث</label>
+                        <input type="text" id="updateTitle" name="title" required>
+                      </div>
+                      <div class="form-field">
+                        <label for="updateDate">تاريخ التحديث</label>
+                        <input type="date" id="updateDate" name="update_date" required>
+                      </div>
+                      <div class="form-field">
+                        <label for="updateStage">مرحلة المشروع</label>
+                        <select id="updateStage" name="stage" required>
+                          <option value="">اختر المرحلة</option>
+                          <option value="foundation">الأساسات</option>
+                          <option value="concrete">أعمال الخرسانة</option>
+                          <option value="walls">أعمال المباني</option>
+                          <option value="finishing">التشطيبات</option>
+                          <option value="exterior">الواجهة</option>
+                          <option value="delivery">التسليم</option>
+                          <option value="general">عام</option>
+                        </select>
+                      </div>
+                      <div class="form-field">
+                        <label for="updateDescription">وصف التحديث</label>
+                        <textarea id="updateDescription" name="description" rows="4" required></textarea>
+                      </div>
+                      <div class="form-field">
+                        <label for="updateMediaType">نوع الوسائط</label>
+                        <select id="updateMediaType" name="media_type" required onchange="toggleMediaFields()">
+                          <option value="">اختر النوع</option>
+                          <option value="image">صورة</option>
+                          <option value="video">فيديو</option>
+                        </select>
+                      </div>
+                      <div class="form-field" id="imageField" style="display: none;">
+                        <label for="updateImage">رفع صورة</label>
+                        <input type="file" id="updateImage" name="image" accept="image/*">
+                        <div id="imagePreview" style="margin-top: 10px;"></div>
+                      </div>
+                      <div class="form-field" id="videoField" style="display: none;">
+                        <label for="updateVideo">رفع فيديو</label>
+                        <input type="file" id="updateVideo" name="video" accept="video/*">
+                        <div id="videoPreview" style="margin-top: 10px;"></div>
+                      </div>
+                      <div class="form-field">
+                        <label for="updateStatus">حالة النشر</label>
+                        <select id="updateStatus" name="status">
+                          <option value="draft">مسودة</option>
+                          <option value="published">منشور</option>
+                        </select>
+                      </div>
+                      <div class="form-field">
+                        <label for="updateOrder">ترتيب الظهور</label>
+                        <input type="number" id="updateOrder" name="display_order" min="0" value="0">
+                      </div>
+                    </div>
+                    <div class="form-actions">
+                      <button type="button" class="btn secondary" onclick="hideUpdateForm()">إلغاء</button>
+                      <button type="submit" class="btn primary">حفظ</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="container">
+      <div class="section-title reveal">
+        <h2>تواصل معنا</h2>
+        <p>
+          للتواصل المباشر مع فريق المشروع أو حجز وحدتك، لا تتردد في التواصل.
+        </p>
+      </div>
+      <div class="contact-layout">
+        <div class="contact-info">
+          <h3>معلومات التواصل</h3>
+          <div class="contact-details">
+            <div class="contact-item">
+              <strong>الهاتف:</strong>
+              <span dir="ltr">+201234567890</span>
+            </div>
+            <div class="contact-item">
+              <strong>واتساب:</strong>
+              <a href="https://wa.me/201234567890" target="_blank">
+                +201234567890
+              </a>
+            </div>
+            <div class="contact-item">
+              <strong>البريد الإلكتروني:</strong>
+              <a href="mailto:info@abduljalil-land.com">
+                info@abduljalil-land.com
+              </a>
+            </div>
+            <div class="contact-item">
+              <strong>الموقع:</strong>
+              <span>موقع استراتيجي حيوي</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="contact-form">
+          <h3>أرسل لنا رسالة</h3>
+          <form id="leadForm">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="name">الاسم الكامل</label>
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  required
+                  placeholder="أدخل اسمك الكامل"
+                />
+              </div>
+              <div class="form-field">
+                <label for="phone">رقم الهاتف</label>
+                <input
+                  type="tel"
+                  id="phone"
+                  name="phone"
+                  required
+                  placeholder="أدخل رقم هاتفك"
+                />
+              </div>
+              <div class="form-field">
+                <label for="email">البريد الإلكتروني</label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  required
+                  placeholder="أدخل بريدك الإلكتروني"
+                />
+              </div>
+            </div>
+            <div class="form-field">
+              <label for="message">الرسالة</label>
+              <textarea
+                id="message"
+                name="message"
+                rows="4"
+                required
+                placeholder="اكتب رسالتك هنا..."
+              ></textarea>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn primary">إرسال الرسالة</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+      <div class="container">
+        <p>
+          © 2026 مشروع أرض عبدالجليل. جميع الحقوق محفوظة.
+        </p>
+      </div>
+    </footer>
+
+    <!-- Video Modal -->
+    <div class="video-modal-overlay" id="videoModal" onclick="if(event.target===this)closeVideoModal()">
+      <div class="video-modal-content">
+        <button class="video-modal-close" onclick="closeVideoModal()" aria-label="Close video">&times;</button>
+        <video id="modalVideo" controls></video>
+      </div>
+    </div>
+
+    <!-- External JavaScript Files -->
+    <script src="static/js/config.js"></script>
+    <script src="static/js/mediaAssets.js"></script>
+    <script src="static/js/utils.js"></script>
+    <script src="static/js/api.js"></script>
+    <script src="static/js/gallery.js"></script>
+    <script src="static/js/latestUpdates.js"></script>
+    <script src="static/js/clientPortal.js"></script>
+    <script src="static/js/adminDashboard.js"></script>
+    <script src="static/js/assistantDashboard.js"></script>
+    <script src="static/js/payments.js"></script>
+    <script src="static/js/contracts.js"></script>
+    <script src="static/js/projectUpdatesAdmin.js"></script>
+    <script src="static/js/main.js"></script>
+  </body>
+</html>

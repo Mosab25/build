@@ -1,0 +1,116 @@
+/* Base CSS Variables and Global Styles */
+:root {
+  --ink: #090908;
+  --ink-2: #11100e;
+  --charcoal: #191815;
+  --ivory: #f8f3e8;
+  --paper: #fffaf0;
+  --muted: #bdb3a1;
+  --gold: #d9b565;
+  --gold-2: #f1d896;
+  --bronze: #9c6f38;
+  --copper: #b77942;
+  --sage: #5f715d;
+  --wine: #6e2b35;
+  --blueprint: #293d4a;
+  --blueprint-2: #5d7f85;
+  --line: rgba(248, 243, 232, 0.16);
+  --glass: rgba(16, 15, 13, 0.58);
+  --glass-soft: rgba(255, 250, 240, 0.08);
+  --shadow: 0 26px 80px rgba(0, 0, 0, 0.34);
+  --radius: 8px;
+  --container: min(1180px, calc(100% - 40px));
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: "Cairo", "Tajawal", system-ui, sans-serif;
+  color: var(--ivory);
+  background: linear-gradient(180deg, rgba(9, 9, 8, 0.94), rgba(25, 24, 21, 0.98)),
+    repeating-linear-gradient(
+      135deg,
+      rgba(217, 181, 101, 0.055) 0 1px,
+      transparent 1px 22px
+    ),
+    var(--ink);
+  line-height: 1.75;
+  overflow-x: hidden;
+}
+
+::selection {
+  color: var(--ink);
+  background: var(--gold-2);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 250, 240, 0.035) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      rgba(255, 250, 240, 0.025) 1px,
+      transparent 1px
+    );
+  background-size: 80px 80px;
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.65),
+    transparent 72%
+  );
+  z-index: -1;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.34;
+  background:
+    linear-gradient(
+      110deg,
+      transparent 0 34%,
+      rgba(93, 127, 133, 0.12) 34.1% 34.6%,
+      transparent 34.8% 100%
+    ),
+    linear-gradient(
+      70deg,
+      transparent 0 66%,
+      rgba(217, 181, 101, 0.1) 66.1% 66.5%,
+      transparent 66.7% 100%
+    );
+  mix-blend-mode: screen;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.container {
+  width: var(--container);
+  margin-inline: auto;
+}

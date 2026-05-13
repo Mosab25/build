@@ -1,0 +1,84 @@
+/* RTL Specific Fixes */
+body {
+  direction: rtl;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  text-align: right;
+}
+
+.nav-links {
+  direction: ltr;
+}
+
+.nav-links a {
+  direction: rtl;
+}
+
+.brand::before {
+  inset-block-start: 50%;
+  inset-inline-start: 0;
+}
+
+.brand::after {
+  inset-block-start: calc(50% - 9px);
+  inset-inline-start: 9px;
+}
+
+.gallery-caption {
+  right: 0;
+  left: auto;
+}
+
+.video-play-overlay {
+  right: 50%;
+  left: auto;
+  transform: translateY(-50%) translateX(50%);
+}
+
+.gallery-card.video-card:hover .video-play-overlay {
+  transform: translateY(-50%) translateX(50%) scale(1.1);
+}
+
+.modal-close {
+  left: 0;
+  right: auto;
+}
+
+.video-modal-close {
+  left: 0;
+  right: auto;
+}
+
+.image-modal-close {
+  left: 0;
+  right: auto;
+}
+
+.admin-actions {
+  direction: ltr;
+}
+
+.admin-actions button {
+  direction: rtl;
+}
+
+.status-badge {
+  direction: rtl;
+}
+
+.progress-line-head {
+  direction: rtl;
+}
+
+@media (max-width: 768px) {
+  .stats-grid,
+  .updates-grid,
+  .gallery-grid,
+  .contact-actions,
+  .apartment-models-grid {
+    direction: rtl;
+  }
+}

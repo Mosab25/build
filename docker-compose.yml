@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: real_estate_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: real_estate
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d real_estate"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

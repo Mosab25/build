@@ -1,0 +1,23 @@
+[dir="rtl"] .staff-shell {
+  direction: ltr;
+}
+
+[dir="rtl"] .staff-shell .dashboard-sidebar,
+[dir="rtl"] .staff-shell .dashboard-main {
+  direction: rtl;
+}
+
+[dir="rtl"] .dashboard-sidebar {
+  border-left: 0;
+  border-right: 1px solid var(--line);
+}
+
+[dir="rtl"] input,
+[dir="rtl"] textarea,
+[dir="rtl"] select {
+  text-align: right;
+}
+
+[hidden] {
+  display: none !important;
+}

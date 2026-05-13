@@ -1,0 +1,17 @@
+.env
+l.env
+*.sqlite
+*.db
+generated/
+uploads/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+build/
+.vscode/
+archive/
+add_assistant.py
+assistant_endpoints.py
+assistant_routes.py
+integrate_assistant.py

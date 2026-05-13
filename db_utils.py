@@ -1,0 +1,468 @@
+"""Database utilities for PostgreSQL connection and helpers.
+
+The production database is PostgreSQL and is configured through DATABASE_URL.
+This module keeps the existing legacy ``conn.execute(...).fetchone()``
+call sites working while routing all runtime traffic to psycopg2.
+"""
+from __future__ import annotations
+
+import os
+import json
+import hashlib
+import hmac
+import secrets
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+except ImportError:
+    pass
+
+import psycopg2
+import psycopg2.extras
+
+
+def get_database_url() -> str:
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL is required. Create a .env file from .env.example, "
+            "then set DATABASE_URL to your PostgreSQL connection string."
+        )
+    return database_url
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+class PGRow(dict):
+    """Dictionary row with numeric indexing compatibility for older call sites."""
+
+    def __init__(self, keys: list[str], values: tuple[Any, ...]):
+        super().__init__(zip(keys, values))
+        self._values = list(values)
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, int):
+            return self._values[key]
+        return super().__getitem__(key)
+
+
+class PGCursor:
+    def __init__(self, cursor):
+        self.cursor = cursor
+        self._keys: list[str] = []
+
+    @property
+    def rowcount(self) -> int:
+        return self.cursor.rowcount
+
+    def execute(self, query: str, params: tuple[Any, ...] | list[Any] | None = None) -> "PGCursor":
+        converted = convert_sql(query)
+        if not converted.strip():
+            return self
+        self.cursor.execute(converted, params or ())
+        self._keys = [col.name for col in self.cursor.description] if self.cursor.description else []
+        return self
+
+    def fetchone(self) -> PGRow | None:
+        row = self.cursor.fetchone()
+        return PGRow(self._keys, tuple(row)) if row is not None else None
+
+    def fetchall(self) -> list[PGRow]:
+        return [PGRow(self._keys, tuple(row)) for row in self.cursor.fetchall()]
+
+    def close(self) -> None:
+        self.cursor.close()
+
+
+class PGConnection:
+    def __init__(self):
+        self.conn = psycopg2.connect(get_database_url())
+        self.conn.autocommit = False
+
+    def cursor(self, *args, **kwargs):
+        return self.conn.cursor(*args, **kwargs)
+
+    def execute(self, query: str, params: tuple[Any, ...] | list[Any] | None = None) -> PGCursor:
+        cursor = PGCursor(self.conn.cursor())
+        return cursor.execute(query, params)
+
+    def executescript(self, script: str) -> None:
+        for statement in split_sql_script(script):
+            converted = convert_sql(statement)
+            if converted.strip():
+                with self.conn.cursor() as cur:
+                    cur.execute(converted)
+
+    def commit(self) -> None:
+        self.conn.commit()
+
+    def rollback(self) -> None:
+        self.conn.rollback()
+
+    def close(self) -> None:
+        self.conn.close()
+
+    def __enter__(self) -> "PGConnection":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if exc_type:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
+
+
+def split_sql_script(script: str) -> list[str]:
+    statements: list[str] = []
+    current: list[str] = []
+    in_single = False
+    in_double = False
+    prev = ""
+    for char in script:
+        if char == "'" and not in_double and prev != "\\":
+            in_single = not in_single
+        elif char == '"' and not in_single and prev != "\\":
+            in_double = not in_double
+        if char == ";" and not in_single and not in_double:
+            statement = "".join(current).strip()
+            if statement:
+                statements.append(statement)
+            current = []
+        else:
+            current.append(char)
+        prev = char
+    tail = "".join(current).strip()
+    if tail:
+        statements.append(tail)
+    return statements
+
+
+def convert_sql(query: str) -> str:
+    q = query.strip()
+    if not q or q.upper().startswith("PRAGMA"):
+        return ""
+    q = q.replace(
+        "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+        "INSERT INTO settings (key, value, updated_at) VALUES (%s, %s, %s) ON CONFLICT (key) DO NOTHING",
+    )
+    q = q.replace("ON CONFLICT(key)", "ON CONFLICT (key)")
+    q = q.replace("?", "%s")
+    return q
+
+
+def db() -> PGConnection:
+    return PGConnection()
+
+
+def fetchone(conn, query, params=None):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(convert_sql(query), params or ())
+        return dict(cur.fetchone()) if cur.rowcount and cur.description else None
+
+
+def fetchall(conn, query, params=None):
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(convert_sql(query), params or ())
+        rows = cur.fetchall()
+        return [dict(r) for r in rows]
+
+
+def fetchval(conn, query, params=None):
+    with conn.cursor() as cur:
+        cur.execute(convert_sql(query), params or ())
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def execute(conn, query, params=None):
+    with conn.cursor() as cur:
+        cur.execute(convert_sql(query), params or ())
+
+
+def executemany(conn, query, params_list):
+    with conn.cursor() as cur:
+        for params in params_list:
+            cur.execute(convert_sql(query), params)
+
+
+def json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 180_000)
+    return digest.hex(), salt
+
+
+def verify_password(password: str, stored_hash: str, salt: str) -> bool:
+    digest, _ = hash_password(password, salt)
+    return hmac.compare_digest(digest, stored_hash)
+
+
+def public_id(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex}"
+
+
+def normalize_code(code: str) -> str:
+    return (code or "").strip().upper()
+
+
+def format_money(value: Any) -> str:
+    return f"{float(value or 0):,.0f} جنيه"
+
+
+def deal_number_next(conn) -> str:
+    count = fetchval(conn, "SELECT COUNT(*) FROM deals") or 0
+    return f"DEAL-{count + 1:04d}"
+
+
+def status_title(value: str | None) -> str:
+    mapping = {
+        "available": "Available", "reserved": "Reserved", "sold": "Sold",
+        "pending_payment": "Pending Payment", "pending_approval": "Pending Approval",
+        "pending": "Pending", "confirmed": "Confirmed", "cancelled": "Cancelled",
+        "partially_paid": "Partially Paid", "fully_paid": "Fully Paid",
+        "overdue": "Overdue", "cash": "Cash", "bank_transfer": "Bank Transfer",
+        "installment": "Installment", "office_payment": "Office Payment",
+        "other": "Other", "rejected": "Rejected", "upcoming": "Upcoming",
+        "due": "Due", "paid": "Paid", "partially_paid_installment": "Partially Paid",
+    }
+    return mapping.get(value or "", value or "")
+
+
+def status_db(value: str | None, kind: str) -> str:
+    normalized = (value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    maps = {
+        "apartment": {"available": "available", "reserved": "reserved", "sold": "sold",
+                       "pending_payment": "pending_payment", "pending_approval": "pending_approval",
+                       "frozen": "frozen"},
+        "reservation": {"pending": "pending", "reserved": "reserved", "confirmed": "confirmed",
+                         "sold": "sold", "cancelled": "cancelled"},
+        "payment": {"pending": "pending", "partially_paid": "partially_paid",
+                     "fully_paid": "fully_paid", "overdue": "overdue"},
+        "payment_record": {"confirmed": "confirmed", "pending": "pending", "rejected": "rejected"},
+        "method": {"cash": "cash", "bank_transfer": "bank_transfer", "installment": "installment",
+                    "office_payment": "office_payment", "other": "other"},
+        "installment": {"upcoming": "upcoming", "due": "due", "paid": "paid",
+                         "partially_paid": "partially_paid", "overdue": "overdue", "cancelled": "cancelled"},
+    }
+    if normalized not in maps.get(kind, {}):
+        raise ValueError(f"Invalid {kind} status: {value}")
+    return maps[kind][normalized]
+
+
+def audit(conn, admin_id, action_type, entity_type, entity_id, description, old_value=None, new_value=None):
+    execute(conn,
+        """INSERT INTO audit_logs (id, admin_id, action_type, entity_type, entity_id,
+           old_value, new_value, description, created_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (public_id("log"), admin_id, action_type, entity_type, entity_id,
+         json_dumps(old_value) if old_value is not None else None,
+         json_dumps(new_value) if new_value is not None else None,
+         description, now_iso()))
+
+
+def get_setting(conn, key: str) -> str:
+    row = fetchone(conn, "SELECT value FROM settings WHERE key = %s", (key,))
+    return row["value"] if row else ""
+
+
+def all_settings(conn) -> dict[str, str]:
+    rows = fetchall(conn, "SELECT key, value FROM settings")
+    return {r["key"]: r["value"] for r in rows}
+
+
+def receipt_number(conn) -> str:
+    settings = all_settings(conn)
+    prefix = settings.get("receipt_prefix", "RCPT")
+    count = (fetchval(conn, "SELECT COUNT(*) FROM payments WHERE receipt_number IS NOT NULL") or 0) + 1
+    candidate = f"{prefix}-{count:04d}"
+    while fetchone(conn, "SELECT id FROM payments WHERE receipt_number = %s", (candidate,)):
+        count += 1
+        candidate = f"{prefix}-{count:04d}"
+    return candidate
+
+
+def apartment_features(apartment_type: str) -> list[str]:
+    if apartment_type == "A":
+        return ["Wide layout", "Large area", "Good ventilation", "Private reservation", "Elevator access"]
+    if apartment_type == "B":
+        return ["North-facing unit", "Premium finishing", "Family-friendly space", "Elevator access"]
+    return ["South-facing unit", "Good ventilation", "Family-friendly space", "Private reservation"]
+
+
+def apartment_payload(row: dict) -> dict:
+    return {
+        "id": row["id"], "unitCode": row["unit_code"], "floorNumber": row["floor_number"],
+        "apartmentType": row["apartment_type"], "area": row["area"],
+        "directionAr": row["direction_ar"], "directionEn": row["direction_en"],
+        "price": row["price"], "status": status_title(row["status"]),
+        "assignedClientId": row.get("assigned_client_id"),
+        "buildingName": "مشروع أرض عبدالجليل",
+        "location": "أرض عبدالجليل",
+        "notes": row.get("notes"), "features": apartment_features(row["apartment_type"]),
+    }
+
+
+def payment_payload(row: dict) -> dict:
+    return {
+        "id": row["id"], "date": row["payment_date"], "amount": row["amount"],
+        "method": status_title(row["payment_method"]),
+        "status": status_title(row["payment_status"]),
+        "reference": row.get("receipt_number") or row.get("reference_number"),
+        "receiptNumber": row.get("receipt_number"),
+        "referenceNumber": row.get("reference_number"), "notes": row.get("notes"),
+    }
+
+
+def installment_payload(row: dict) -> dict:
+    return {
+        "id": row["id"], "installmentNumber": row["installment_number"],
+        "dueDate": row["due_date"], "amount": row["amount"],
+        "paidAmount": row["paid_amount"], "remainingAmount": row["remaining_amount"],
+        "status": row["status"], "paymentId": row.get("payment_id"), "notes": row.get("notes"),
+    }
+
+
+def recalc_installments(conn, client_id):
+    rows = fetchall(conn, "SELECT * FROM installments WHERE client_id = %s", (client_id,))
+    today = datetime.now().date()
+    for row in rows:
+        amount = float(row["amount"] or 0)
+        paid = float(row["paid_amount"] or 0)
+        remaining = max(0, amount - paid)
+        status = row["status"]
+        if status != "cancelled":
+            due_date = None
+            if row["due_date"]:
+                try:
+                    due_date = datetime.fromisoformat(str(row["due_date"])).date()
+                except Exception:
+                    pass
+            if remaining <= 0:
+                status = "paid"
+            elif paid > 0:
+                status = "partially_paid"
+            elif due_date and due_date < today:
+                status = "overdue"
+            elif due_date and due_date == today:
+                status = "due"
+            else:
+                status = "upcoming"
+        execute(conn,
+            "UPDATE installments SET remaining_amount = %s, status = %s, updated_at = %s WHERE id = %s",
+            (remaining, status, now_iso(), row["id"]))
+
+
+def recalc_client(conn, client_id):
+    client = fetchone(conn, "SELECT * FROM clients WHERE id = %s", (client_id,))
+    if not client:
+        return
+    recalc_installments(conn, client_id)
+    paid = fetchval(conn,
+        "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE client_id = %s AND payment_status = 'confirmed'",
+        (client_id,)) or 0
+    total = float(client["total_amount"] or 0)
+    remaining = max(0, total - float(paid))
+    overdue_count = fetchval(conn,
+        "SELECT COUNT(*) FROM installments WHERE client_id = %s AND status = 'overdue' AND remaining_amount > 0",
+        (client_id,)) or 0
+    if overdue_count:
+        payment_status = "overdue"
+    elif paid <= 0:
+        payment_status = "pending"
+    elif paid >= total and total > 0:
+        payment_status = "fully_paid"
+    else:
+        payment_status = "partially_paid"
+    execute(conn,
+        "UPDATE clients SET paid_amount = %s, remaining_amount = %s, payment_status = %s, updated_at = %s WHERE id = %s",
+        (paid, remaining, payment_status, now_iso(), client_id))
+    sync_apartment_for_client(conn, client_id)
+
+
+def sync_apartment_for_client(conn, client_id):
+    client = fetchone(conn, "SELECT * FROM clients WHERE id = %s", (client_id,))
+    if not client or not client.get("apartment_id"):
+        return
+    apartment_status = "available"
+    assigned_client_id = None
+    if client["reservation_status"] != "cancelled":
+        assigned_client_id = client["id"]
+        if client["reservation_status"] == "sold" or client["payment_status"] == "fully_paid":
+            apartment_status = "sold"
+        elif client["payment_status"] in ("pending", "overdue"):
+            apartment_status = "pending_payment"
+        else:
+            apartment_status = "reserved"
+    execute(conn,
+        "UPDATE apartments SET status = %s, assigned_client_id = %s, updated_at = %s WHERE id = %s",
+        (apartment_status, assigned_client_id, now_iso(), client["apartment_id"]))
+
+
+def active_client_for_apartment(conn, apartment_id, exclude_client_id=None):
+    if exclude_client_id:
+        return fetchone(conn,
+            "SELECT * FROM clients WHERE apartment_id = %s AND reservation_status != 'cancelled' AND id != %s",
+            (apartment_id, exclude_client_id))
+    return fetchone(conn,
+        "SELECT * FROM clients WHERE apartment_id = %s AND reservation_status != 'cancelled'",
+        (apartment_id,))
+
+
+def validate_assignment(conn, apartment_id, client_id=None):
+    apartment = fetchone(conn, "SELECT * FROM apartments WHERE id = %s", (apartment_id,))
+    if not apartment:
+        return False, "الشقة غير موجودة."
+    if apartment["status"] == "sold" and apartment.get("assigned_client_id") != client_id:
+        return False, "لا يمكن تخصيص شقة مباعة لعميل جديد."
+    other = active_client_for_apartment(conn, apartment_id, exclude_client_id=client_id)
+    if other:
+        return False, "هذه الشقة محجوزة بالفعل لعميل آخر."
+    return True, None
+
+
+def client_payload(conn, client, include_private=True):
+    apartment = fetchone(conn, "SELECT * FROM apartments WHERE id = %s", (client.get("apartment_id"),)) if client.get("apartment_id") else None
+    payments = fetchall(conn, "SELECT * FROM payments WHERE client_id = %s ORDER BY payment_date DESC, created_at DESC", (client["id"],))
+    installments = fetchall(conn, "SELECT * FROM installments WHERE client_id = %s ORDER BY installment_number ASC", (client["id"],))
+    return {
+        "id": client["id"], "code": client["client_code"], "name": client["full_name"],
+        "phone": client.get("phone"), "email": client.get("email"),
+        "nationalId": client.get("national_id") if include_private else None,
+        "apartmentId": client.get("apartment_id"),
+        "reservationStatus": status_title(client["reservation_status"]),
+        "reservationDate": client["reservation_date"],
+        "expectedDeliveryDate": client.get("expected_delivery_date"),
+        "totalAmount": client["total_amount"], "paidAmount": client["paid_amount"],
+        "remainingAmount": client["remaining_amount"],
+        "paymentStatus": status_title(client["payment_status"]),
+        "officeNotes": client.get("office_notes"),
+        "apartment": apartment_payload(apartment) if apartment else None,
+        "payments": [payment_payload(r) for r in payments],
+        "installments": [installment_payload(r) for r in installments],
+    }
+
+
+def create_receipt_record(conn, payment_id, admin_id):
+    payment = fetchone(conn, "SELECT * FROM payments WHERE id = %s", (payment_id,))
+    if not payment or not payment.get("receipt_number"):
+        return
+    existing = fetchone(conn, "SELECT id FROM receipts WHERE payment_id = %s", (payment_id,))
+    if existing:
+        return
+    execute(conn,
+        """INSERT INTO receipts (id, payment_id, client_id, apartment_id, receipt_number,
+           receipt_pdf_url, issued_at, issued_by, created_at)
+           VALUES (%s, %s, %s, %s, %s, NULL, %s, %s, %s)""",
+        (public_id("receipt"), payment_id, payment["client_id"], payment.get("apartment_id"),
+         payment["receipt_number"], now_iso(), admin_id, now_iso()))
