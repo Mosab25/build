@@ -40,9 +40,17 @@ APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
 SECRET_KEY = os.environ.get("SECRET_KEY") or ("dev-secret-change-me" if APP_ENV != "production" else "")
 if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY is required when APP_ENV=production.")
+MEDIA_DIR = BASE_DIR / "media"
 GENERATED_DIR = BASE_DIR / "generated"
 INDEX_PATH = BASE_DIR / "index.html"
 UPLOAD_DIR = BASE_DIR / os.environ.get("UPLOAD_FOLDER", "uploads")
+REQUIRED_MEDIA_FILES = (
+    "facade.jpg",
+    "apartment-1.jpg",
+    "apartment-2.jpg",
+    "apartment-3.jpg",
+    "project-video.mp4",
+)
 ALLOWED_UPDATE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "mp4", "webm"}
 MAX_UPDATE_UPLOAD_MB = 80
 
@@ -54,7 +62,15 @@ CLIENT_RATE_LIMIT_ATTEMPTS = 12
 app = Flask(__name__)
 app.config["SECRET_KEY"] = SECRET_KEY
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_DIR)
-GENERATED_DIR.mkdir(exist_ok=True)
+
+
+def ensure_runtime_directories() -> None:
+    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def missing_required_media_files() -> list[str]:
+    return [f"media/{name}" for name in REQUIRED_MEDIA_FILES if not (MEDIA_DIR / name).exists()]
 
 
 @app.after_request
@@ -73,12 +89,12 @@ def normalize_json_response(response: Response) -> Response:
 # Serve static files from media directory
 @app.route('/media/<path:filename>')
 def serve_media(filename):
-    return send_from_directory('media', filename)
+    return send_from_directory(MEDIA_DIR, filename)
 
 # Serve static files from uploads directory
 @app.route('/uploads/<path:filename>')
 def serve_uploads(filename):
-    return send_from_directory('uploads', filename)
+    return send_from_directory(UPLOAD_DIR, filename)
 
 client_code_attempts: dict[str, list[float]] = {}
 login_attempts: dict[str, list[float]] = {}
@@ -709,6 +725,14 @@ def seed_defaults() -> None:
                             now_iso(),
                         ),
                     )
+
+
+def bootstrap_runtime() -> None:
+    ensure_runtime_directories()
+    init_db()
+
+
+bootstrap_runtime()
 
 
 def current_admin() -> dict[str, Any] | None:

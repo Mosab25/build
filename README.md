@@ -59,6 +59,47 @@ python scripts/seed_postgresql.py
 http://127.0.0.1:8000
 ```
 
+## Render + Neon (First Run)
+
+1. ارفع ملفات الوسائط الأساسية داخل `media/` إلى GitHub، وهي:
+   - `media/facade.jpg`
+   - `media/apartment-1.jpg`
+   - `media/apartment-2.jpg`
+   - `media/apartment-3.jpg`
+   - `media/project-video.mp4`
+2. اترك `uploads/` و`generated/` خارج GitHub لأنها ملفات تشغيلية تنشأ أثناء العمل فقط.
+3. في Render اضبط متغيرات البيئة:
+
+```text
+APP_ENV=production
+SECRET_KEY=<strong-random-secret>
+DATABASE_URL=<your-neon-connection-string>
+```
+
+4. استخدم Build Command:
+
+```text
+python -m pip install -r requirements.txt
+```
+
+5. استخدم Start Command الآمن التالي:
+
+```text
+python scripts/prepare_production.py && gunicorn server:app
+```
+
+6. في أول تشغيل سيتم:
+   - إنشاء كل الجداول تلقائيًا
+   - إنشاء حساب المالك الافتراضي إذا لم يكن موجودًا
+   - إنشاء 21 شقة إذا كانت القاعدة فارغة
+   - إنشاء الإعدادات الافتراضية
+
+7. بيانات الدخول الافتراضية لأول تشغيل:
+   - البريد الإلكتروني: `admin@example.com`
+   - كلمة المرور: `Admin@12345`
+
+> غيّر بيانات الدخول الافتراضية مباشرة بعد أول تسجيل دخول على بيئة الإنتاج.
+
 ## إعادة ضبط حساب المالك محليًا
 
 لو بيانات الدخول لا تعمل على PostgreSQL أو أردت إعادة ضبط حساب المالك، استخدم:
@@ -138,10 +179,14 @@ __pycache__/
 *.sqlite3
 ```
 
+> ملاحظة: لا تضف `media/` إلى `.gitignore` لأن الصفحة العامة تعتمد على هذه الملفات مباشرة.
+
 ## ملاحظات تشغيلية
 
 - يتم بذر 21 شقة تلقائيًا إذا لم تكن موجودة.
+- يتم استدعاء `init_db()` تلقائيًا عند إقلاع التطبيق، بما في ذلك التشغيل عبر `gunicorn` على Render.
 - ملفات PDF وExcel تنشأ عند الطلب داخل `generated/`.
+- مجلد `uploads/` ينشأ تلقائيًا وقت التشغيل ولا يلزم وجوده مسبقًا داخل GitHub.
 - صور وفيديوهات المشروع الفعلية يجب أن تكون داخل `media/` بالمسارات:
   - `media/facade.jpg`
   - `media/apartment-1.jpg`
