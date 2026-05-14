@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import csv
 import hashlib
@@ -24,6 +24,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from db_utils import db, get_database_url
+from bootstrap_owner import bootstrap_owner_account
 
 try:
     import arabic_reshaper
@@ -730,6 +731,7 @@ def seed_defaults() -> None:
 def bootstrap_runtime() -> None:
     ensure_runtime_directories()
     init_db()
+    bootstrap_owner_account()
 
 
 bootstrap_runtime()
