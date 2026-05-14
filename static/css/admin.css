@@ -10,7 +10,7 @@
   border: 1px solid rgba(215, 176, 98, 0.2);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
-  color: var(--muted);
+  color: var(--text-muted);
   text-align: right;
   padding: 10px 12px;
   font-weight: 800;
@@ -58,9 +58,10 @@
 
 .floor-label,
 .unit-card {
-  border: 1px solid rgba(23, 28, 38, 0.14);
+  border: 1px solid var(--border-soft);
   border-radius: 12px;
-  background: #fff;
+  background: var(--bg-card);
+  color: var(--text-main);
   padding: 12px;
 }
 
@@ -148,10 +149,11 @@
   min-height: 122px;
   padding: 16px;
   overflow: hidden;
-  border: 1px solid rgba(185, 142, 60, 0.28);
+  border: 1px solid var(--border-soft);
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 252, 244, 0.94), rgba(246, 239, 224, 0.9));
-  box-shadow: 0 14px 34px rgba(43, 30, 12, 0.08);
+  background: var(--bg-card);
+  color: var(--text-main);
+  box-shadow: 0 14px 34px rgba(4, 8, 16, 0.22);
 }
 
 .owner-stat-card::after {
@@ -168,13 +170,13 @@
 .owner-stat-card span,
 .owner-stat-card small {
   display: block;
-  color: rgba(29, 25, 20, 0.7);
+  color: var(--text-muted);
 }
 
 .owner-stat-card strong {
   display: block;
   margin-top: 12px;
-  color: #171411;
+  color: var(--text-strong);
   font-size: clamp(1.25rem, 1.7vw, 1.8rem);
   line-height: 1.2;
 }
@@ -202,10 +204,10 @@
   gap: 8px;
   min-height: 132px;
   padding: 16px;
-  border: 1px solid rgba(185, 142, 60, 0.22);
+  border: 1px solid var(--border-soft);
   border-radius: 14px;
-  background: #fffaf0;
-  color: var(--ink);
+  background: var(--bg-card);
+  color: var(--text-main);
   text-align: right;
   box-shadow: 0 12px 28px rgba(43, 30, 12, 0.07);
 }
@@ -213,16 +215,16 @@
 .owner-action-card:hover {
   transform: translateY(-1px);
   border-color: rgba(185, 142, 60, 0.42);
-  background: #fff4dd;
+  background: var(--bg-card-soft);
 }
 
 .owner-action-card span,
 .owner-action-card small {
-  color: rgba(29, 25, 20, 0.68);
+  color: var(--text-muted);
 }
 
 .owner-action-card strong {
-  color: #171411;
+  color: var(--text-strong);
   font-size: 1.8rem;
   line-height: 1;
 }
@@ -254,27 +256,29 @@
 .owner-money-grid article {
   min-height: 84px;
   padding: 12px;
-  border: 1px solid rgba(185, 142, 60, 0.18);
+  border: 1px solid var(--border-soft);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--bg-card-soft);
+  color: var(--text-main);
 }
 
 .owner-money-grid span {
   display: block;
-  color: rgba(29, 25, 20, 0.66);
+  color: var(--text-muted);
   font-weight: 800;
 }
 
 .owner-money-grid strong {
   display: block;
   margin-top: 8px;
-  color: var(--ink);
+  color: var(--text-strong);
   font-size: 1.08rem;
+  font-weight: 900;
 }
 
-.owner-money-grid .success strong { color: #23724f; }
-.owner-money-grid .danger strong { color: #9f3636; }
-.owner-money-grid .warning strong { color: #9c6f1c; }
+.owner-money-grid .success strong { color: #73e6a8; }
+.owner-money-grid .danger strong { color: #ff9a9a; }
+.owner-money-grid .warning strong { color: #f6d56f; }
 
 .owner-units-view {
   display: grid;
@@ -293,7 +297,8 @@
   padding: 14px;
   border: 1px solid rgba(185, 142, 60, 0.22);
   border-radius: var(--radius);
-  background: rgba(255, 250, 240, 0.8);
+  background: var(--bg-card-soft);
+  color: var(--text-main);
 }
 
 .owner-reservation-fields[hidden] {
@@ -308,12 +313,12 @@
 .owner-inline-title span,
 .owner-linked-client span,
 .owner-linked-client small {
-  color: rgba(29, 25, 20, 0.68);
+  color: var(--text-muted);
   font-weight: 800;
 }
 
 .owner-linked-client strong {
-  color: var(--ink);
+  color: var(--text-strong);
   font-size: 1.12rem;
 }
 
@@ -334,7 +339,7 @@
 }
 
 .dashboard-main .section-heading span {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .owner-alert-list,
@@ -346,9 +351,10 @@
 .owner-alert,
 .activity-timeline article {
   padding: 12px;
-  border: 1px solid rgba(185, 142, 60, 0.2);
+  border: 1px solid var(--border-soft);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--bg-card-soft);
+  color: var(--text-main);
 }
 
 .owner-alert {
@@ -363,7 +369,7 @@
   min-width: 38px;
   height: 38px;
   border-radius: 50%;
-  color: #171411;
+  color: var(--text-strong);
   background: rgba(216, 177, 93, 0.22);
 }
 
@@ -378,7 +384,7 @@
 
 .activity-timeline article span {
   margin-top: 4px;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.88rem;
 }
 
@@ -402,8 +408,8 @@
   border: 1px solid rgba(185, 142, 60, 0.28);
   border-radius: 999px;
   padding: 9px 14px;
-  color: #2d2518;
-  background: rgba(255, 255, 255, 0.74);
+  color: var(--text-main);
+  background: var(--bg-card-soft);
   cursor: pointer;
 }
 
@@ -427,10 +433,11 @@
 
 .owner-deal-card {
   padding: 16px;
-  border: 1px solid rgba(185, 142, 60, 0.24);
+  border: 1px solid var(--border-soft);
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(250, 246, 237, 0.9));
-  box-shadow: 0 18px 38px rgba(28, 20, 9, 0.08);
+  background: var(--bg-card);
+  color: var(--text-main);
+  box-shadow: 0 18px 38px rgba(4, 8, 16, 0.22);
 }
 
 .owner-deal-card header,
@@ -454,7 +461,7 @@
 
 .owner-deal-card p {
   margin: 0;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .deal-metrics,
@@ -468,15 +475,16 @@
 .deal-metrics div,
 .modal-detail-grid div {
   padding: 10px;
-  border: 1px solid rgba(185, 142, 60, 0.16);
+  border: 1px solid var(--border-soft);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--bg-card-soft);
+  color: var(--text-main);
 }
 
 .deal-metrics span,
 .modal-detail-grid span {
   display: block;
-  color: var(--muted);
+  color: var(--gold-soft);
   font-size: 0.82rem;
 }
 
@@ -484,7 +492,8 @@
 .modal-detail-grid strong {
   display: block;
   margin-top: 4px;
-  color: #16120d;
+  color: var(--text-strong);
+  font-weight: 900;
 }
 
 .deal-note-grid {
@@ -499,7 +508,8 @@
   padding: 12px;
   margin: 12px 0;
   border-radius: 14px;
-  background: rgba(16, 16, 15, 0.04);
+  background: var(--bg-card-soft);
+  border: 1px solid var(--border-soft);
 }
 
 .risk-list {
@@ -518,10 +528,10 @@
   background: rgba(216, 177, 93, 0.18);
 }
 
-.risk-badge.danger { background: rgba(185, 77, 77, 0.15); color: #762626; }
-.risk-badge.warning { background: rgba(193, 138, 34, 0.18); color: #76510d; }
-.risk-badge.info { background: rgba(79, 120, 153, 0.14); color: #274b65; }
-.risk-badge.success { background: rgba(47, 143, 99, 0.14); color: #1f6e49; }
+.risk-badge.danger { background: rgba(255, 107, 107, 0.15); color: #ff9a9a; border: 1px solid rgba(255, 107, 107, 0.35); }
+.risk-badge.warning { background: rgba(242, 201, 76, 0.15); color: #f6d56f; border: 1px solid rgba(242, 201, 76, 0.35); }
+.risk-badge.info { background: rgba(255, 255, 255, 0.08); color: var(--text-main); border: 1px solid rgba(255, 255, 255, 0.16); }
+.risk-badge.success { background: rgba(53, 194, 122, 0.15); color: #73e6a8; border: 1px solid rgba(53, 194, 122, 0.35); }
 
 .owner-tabs {
   margin-bottom: 18px;
@@ -551,16 +561,17 @@
 
 .owner-floor-label,
 .owner-unit-card {
-  border: 1px solid rgba(185, 142, 60, 0.24);
+  border: 1px solid var(--border-soft);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--bg-card);
+  color: var(--text-main);
 }
 
 .owner-floor-label {
   display: grid;
   place-items: center;
   font-weight: 900;
-  color: #171411;
+  color: var(--gold-soft);
 }
 
 .owner-unit-card {
@@ -588,7 +599,7 @@
 .owner-unit-card p,
 .owner-unit-card small {
   margin: 0;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .owner-unit-card em {
@@ -604,17 +615,18 @@
   align-items: center;
   gap: 10px;
   padding: 12px;
-  border: 1px solid rgba(185, 142, 60, 0.18);
+  border: 1px solid var(--border-soft);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.74);
+  background: var(--bg-card-soft);
+  color: var(--text-main);
 }
 
 .settings-placeholders,
 .audit-json {
   padding: 12px;
   border-radius: 12px;
-  color: var(--muted);
-  background: rgba(16, 16, 15, 0.05);
+  color: var(--text-muted);
+  background: var(--bg-card-soft);
 }
 
 .audit-json {
@@ -658,8 +670,9 @@
 .admin-alerts span {
   padding: 7px 10px;
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.7);
-  color: var(--ink);
+  background: var(--bg-card-soft);
+  color: var(--text-main);
+  border: 1px solid var(--border-soft);
   font-weight: 800;
 }
 
@@ -701,7 +714,7 @@
   }
 
   .owner-table-wrap {
-    overflow-x: auto;
+    overflow: visible;
   }
 }
 
@@ -781,6 +794,6 @@
   }
 
   .owner-table-wrap table {
-    min-width: 700px;
+    min-width: 0;
   }
 }

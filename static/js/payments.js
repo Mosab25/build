@@ -13,13 +13,13 @@ function renderPaymentTable(payments) {
         <tbody>
           ${payments.map((payment) => `
             <tr>
-              ${showUnit ? `<td>${escapeHTML(payment.unitCode || "-")}</td>` : ""}
-              <td>${formatDate(payment.date)}</td>
-              <td>${formatMoney(payment.amount)}</td>
-              <td>${statusLabel(payment.method)}</td>
-              <td>${StatusBadge(payment.status)}</td>
-              <td>${escapeHTML(payment.receiptNumber || payment.referenceNumber || "-")}</td>
-              <td>${escapeHTML(payment.notes || "-")}</td>
+              ${showUnit ? `<td data-label="الشقة">${escapeHTML(payment.unitCode || "-")}</td>` : ""}
+              <td data-label="التاريخ">${formatDate(payment.date)}</td>
+              <td data-label="المبلغ" data-money>${formatMoney(payment.amount)}</td>
+              <td data-label="طريقة الدفع">${statusLabel(payment.method)}</td>
+              <td data-label="الحالة">${StatusBadge(payment.status)}</td>
+              <td data-label="رقم الإيصال">${escapeHTML(payment.receiptNumber || payment.referenceNumber || "-")}</td>
+              <td data-label="ملاحظات">${escapeHTML(payment.notes || "-")}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -58,14 +58,14 @@ function renderAdminPaymentTable(payments) {
             const apartment = apartments.find((item) => item.id === payment.apartmentId) || client?.apartment;
             return `
               <tr>
-                <td>${escapeHTML(client?.name || "-")}</td>
-                <td>${escapeHTML(apartment?.unitCode || "-")}</td>
-                <td>${formatDate(payment.date)}</td>
-                <td>${formatMoney(payment.amount)}</td>
-                <td>${statusLabel(payment.method)}</td>
-                <td>${StatusBadge(payment.status)}</td>
-                <td>${escapeHTML(payment.receiptNumber || payment.referenceNumber || "-")}</td>
-                <td class="table-actions">
+                <td data-label="العميل">${escapeHTML(client?.name || "-")}</td>
+                <td data-label="الشقة">${escapeHTML(apartment?.unitCode || "-")}</td>
+                <td data-label="التاريخ">${formatDate(payment.date)}</td>
+                <td data-label="المبلغ" data-money>${formatMoney(payment.amount)}</td>
+                <td data-label="طريقة الدفع">${statusLabel(payment.method)}</td>
+                <td data-label="الحالة">${StatusBadge(payment.status)}</td>
+                <td data-label="رقم الإيصال">${escapeHTML(payment.receiptNumber || payment.referenceNumber || "-")}</td>
+                <td data-label="إجراءات" class="table-actions">
                   <button class="btn ghost small" data-payment-edit="${payment.id}" type="button">تعديل الدفعة</button>
                   <button class="btn secondary small" data-payment-receipt="${payment.id}" type="button">تحميل إيصال الدفع</button>
                   <button class="btn danger small" data-payment-delete="${payment.id}" type="button">حذف الدفعة</button>
@@ -93,12 +93,12 @@ function renderInstallmentsTable(installments) {
         <tbody>
           ${installments.map((item) => `
             <tr>
-              <td>${Number(item.installmentNumber).toLocaleString("ar-EG")}</td>
-              <td>${formatDate(item.dueDate)}</td>
-              <td>${formatMoney(item.amount)}</td>
-              <td>${formatMoney(item.paidAmount)}</td>
-              <td>${formatMoney(item.remainingAmount)}</td>
-              <td>${StatusBadge(item.status)}</td>
+              <td data-label="رقم القسط">${Number(item.installmentNumber).toLocaleString("ar-EG")}</td>
+              <td data-label="تاريخ الاستحقاق">${formatDate(item.dueDate)}</td>
+              <td data-label="قيمة القسط" data-money>${formatMoney(item.amount)}</td>
+              <td data-label="المدفوع" data-money>${formatMoney(item.paidAmount)}</td>
+              <td data-label="المتبقي" data-money>${formatMoney(item.remainingAmount)}</td>
+              <td data-label="الحالة">${StatusBadge(item.status)}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -134,15 +134,15 @@ function renderAdminInstallmentsTable(installments) {
             const client = clients.find((entry) => entry.id === item.clientId);
             return `
               <tr>
-                <td>${escapeHTML(client?.name || "-")}</td>
-                <td>${Number(item.installmentNumber).toLocaleString("ar-EG")}</td>
-                <td>${formatDate(item.dueDate)}</td>
-                <td>${formatMoney(item.amount)}</td>
-                <td>${formatMoney(item.paidAmount)}</td>
-                <td>${formatMoney(item.remainingAmount)}</td>
-                <td>${StatusBadge(item.status)}</td>
-                <td>${escapeHTML(item.notes || "-")}</td>
-                <td class="table-actions">
+                <td data-label="العميل">${escapeHTML(client?.name || "-")}</td>
+                <td data-label="رقم القسط">${Number(item.installmentNumber).toLocaleString("ar-EG")}</td>
+                <td data-label="تاريخ الاستحقاق">${formatDate(item.dueDate)}</td>
+                <td data-label="قيمة القسط" data-money>${formatMoney(item.amount)}</td>
+                <td data-label="المدفوع" data-money>${formatMoney(item.paidAmount)}</td>
+                <td data-label="المتبقي" data-money>${formatMoney(item.remainingAmount)}</td>
+                <td data-label="الحالة">${StatusBadge(item.status)}</td>
+                <td data-label="ملاحظات">${escapeHTML(item.notes || "-")}</td>
+                <td data-label="إجراءات" class="table-actions">
                   <button class="btn ghost small" data-installment-edit="${item.id}" type="button">تعديل</button>
                   <button class="btn danger small" data-installment-delete="${item.id}" type="button">حذف</button>
                 </td>
@@ -312,8 +312,8 @@ function openInstallmentForm(installment = null) {
       </div>
       <div class="form-field"><label for="installmentNumber">رقم القسط</label><input id="installmentNumber" type="number" min="1" required /></div>
       <div class="form-field"><label for="installmentDueDate">تاريخ الاستحقاق</label><input id="installmentDueDate" type="date" required /></div>
-      <div class="form-field"><label for="installmentAmount">قيمة القسط</label><input id="installmentAmount" type="number" min="1" step="1000" required /></div>
-      <div class="form-field"><label for="installmentPaidAmount">المدفوع</label><input id="installmentPaidAmount" type="number" min="0" step="1000" /></div>
+      <div class="form-field"><label for="installmentAmount">قيمة القسط</label><input id="installmentAmount" type="text" inputmode="numeric" autocomplete="off" required /></div>
+      <div class="form-field"><label for="installmentPaidAmount">المدفوع</label><input id="installmentPaidAmount" type="text" inputmode="numeric" autocomplete="off" /></div>
       <div class="form-field"><label for="installmentStatus">الحالة</label><select id="installmentStatus"><option value="upcoming">قادم</option><option value="due">مستحق</option><option value="paid">مدفوع</option><option value="partially_paid">مدفوع جزئيًا</option><option value="overdue">متأخر</option><option value="cancelled">ملغي</option></select></div>
       <div class="form-field full"><label for="installmentNotes">ملاحظات</label><textarea id="installmentNotes"></textarea></div>
       <button class="btn primary full" type="submit">حفظ القسط</button>
@@ -321,10 +321,15 @@ function openInstallmentForm(installment = null) {
   `);
   qs("#installmentNumber").value = installment?.installmentNumber || nextInstallmentNumber();
   qs("#installmentDueDate").value = installment?.dueDate || new Date().toISOString().slice(0, 10);
-  qs("#installmentAmount").value = installment?.amount || "";
-  qs("#installmentPaidAmount").value = installment?.paidAmount || 0;
+  qs("#installmentAmount").value = installment?.amount ? formatAmountInput(installment.amount) : "";
+  qs("#installmentPaidAmount").value = installment?.paidAmount ? formatAmountInput(installment.paidAmount) : "0";
   qs("#installmentStatus").value = installment?.status || "upcoming";
   qs("#installmentNotes").value = installment?.notes || "";
+  ["#installmentAmount", "#installmentPaidAmount"].forEach((selector) => {
+    qs(selector)?.addEventListener("input", (event) => {
+      event.target.value = formatAmountInput(event.target.value);
+    });
+  });
   qs("#installmentForm").addEventListener("submit", saveInstallment);
 }
 
@@ -341,8 +346,8 @@ async function saveInstallment(event) {
     client_id: qs("#installmentClient").value,
     installment_number: Number(qs("#installmentNumber").value),
     due_date: qs("#installmentDueDate").value,
-    amount: Number(qs("#installmentAmount").value),
-    paid_amount: Number(qs("#installmentPaidAmount").value || 0),
+    amount: parseFormattedAmount(qs("#installmentAmount").value),
+    paid_amount: parseFormattedAmount(qs("#installmentPaidAmount").value || 0),
     status: qs("#installmentStatus").value,
     notes: qs("#installmentNotes").value.trim(),
   };

@@ -72,8 +72,13 @@ const AdminAPI = {
   createApartment: (payload) => apiPost("/api/admin/apartments", payload),
   clients: () => apiGet("/api/admin/clients"),
   updateAccount: (payload) => apiPatch("/api/admin/account", payload),
+  profile: () => apiGet("/api/admin/profile"),
+  updateProfile: (payload) => apiPatch("/api/admin/profile", payload),
+  changePassword: (payload) => apiPost("/api/admin/change-password", payload),
   createClient: (payload) => apiPost("/api/admin/clients", payload),
   updateClient: (id, payload) => apiPatch(`/api/admin/clients/${id}`, payload),
+  cancelClient: (id, reason) => apiPost(`/api/admin/clients/${id}/cancel`, { reason }),
+  deleteClientWithRecords: (id, payload) => apiPost(`/api/admin/clients/${id}/delete-with-records`, payload),
   deleteClient: async (id) => {
     try {
       return await apiDelete(`/api/admin/clients/${id}?confirm=true`);
@@ -95,6 +100,10 @@ const AdminAPI = {
   auditLogs: () => apiGet("/api/admin/audit-logs"),
   users: () => apiGet("/api/admin/users"),
   createUser: (payload) => apiPost("/api/admin/users", payload),
+  updateUser: (id, payload) => apiPatch(`/api/admin/users/${id}`, payload),
+  disableUser: (id) => apiPost(`/api/admin/users/${id}/disable`),
+  enableUser: (id) => apiPost(`/api/admin/users/${id}/enable`),
+  resetUserPassword: (id, payload) => apiPost(`/api/admin/users/${id}/reset-password`, payload),
   receipt: (paymentId) => apiPost("/api/admin/receipts/generate", { payment_id: paymentId }),
   exportUrl: (kind) => `/api/admin/export/${kind}`,
 };
@@ -109,6 +118,8 @@ const OwnerAPI = {
   rejectDeal: (id, ownerNotes = "") => apiPost(`/api/owner/deals/${id}/reject`, { owner_notes: ownerNotes }),
   requestRevision: (id, ownerNotes = "") => apiPost(`/api/owner/deals/${id}/request-revision`, { owner_notes: ownerNotes }),
   finalizeDeal: (id, ownerPin = "") => apiPost(`/api/owner/deals/${id}/finalize`, { owner_pin: ownerPin }),
+  cancelDeal: (id, reason) => apiPost(`/api/owner/deals/${id}/cancel`, { reason }),
+  deleteDraftDeal: (id) => apiDelete(`/api/owner/deals/${id}`),
   clients: () => apiGet("/api/owner/clients"),
   client: (id) => apiGet(`/api/owner/clients/${id}`),
   apartments: () => apiGet("/api/owner/apartments"),
@@ -134,6 +145,8 @@ const DealAPI = {
   approve: (id, ownerNotes = "") => apiPost(`/api/admin/deals/${id}/approve`, { owner_notes: ownerNotes }),
   reject: (id, ownerNotes = "") => apiPost(`/api/admin/deals/${id}/reject`, { owner_notes: ownerNotes }),
   requestRevision: (id, ownerNotes = "") => apiPost(`/api/admin/deals/${id}/request-revision`, { owner_notes: ownerNotes }),
+  cancel: (id, reason) => apiPost(`/api/admin/deals/${id}/cancel`, { reason }),
+  remove: (id) => apiDelete(`/api/admin/deals/${id}`),
 };
 
 const ContractAPI = {

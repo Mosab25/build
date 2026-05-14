@@ -1,5 +1,6 @@
 function renderSettingsPanel() {
   const settings = APP_STATE.dashboard.settings || {};
+  const profile = APP_STATE.session || {};
   return `
     <section class="data-panel">
       <span class="eyebrow">إعدادات النظام</span>
@@ -16,14 +17,61 @@ function renderSettingsPanel() {
       </form>
     </section>
     <section class="data-panel">
-      <span class="eyebrow">أمان الحساب</span>
-      <h3>تغيير بيانات دخول الإدارة</h3>
-      <form id="accountForm" class="form-grid" autocomplete="off">
-        <div class="form-field"><label for="newAdminEmail">البريد الإلكتروني الجديد</label><input id="newAdminEmail" type="email" placeholder="${escapeHTML(APP_STATE.session?.email || "")}" /></div>
-        <div class="form-field"><label for="currentAdminPassword">كلمة المرور الحالية</label><input id="currentAdminPassword" type="password" required /></div>
-        <div class="form-field"><label for="newAdminPassword">كلمة المرور الجديدة</label><input id="newAdminPassword" type="password" minlength="8" /></div>
-        <button class="btn secondary full" type="submit">تحديث بيانات الدخول</button>
+      <span class="eyebrow">بيانات الدخول / الملف الشخصي</span>
+      <h3>بيانات حسابي</h3>
+      <form id="profileForm" class="form-grid" autocomplete="off">
+        <div class="form-field"><label for="profileFullName">الاسم</label><input id="profileFullName" value="${escapeHTML(profile.fullName || "")}" required /></div>
+        <div class="form-field"><label for="profileEmail">البريد الإلكتروني</label><input id="profileEmail" type="email" value="${escapeHTML(profile.email || "")}" required /></div>
+        <div class="form-field full"><label for="profilePhone">رقم الهاتف</label><input id="profilePhone" value="${escapeHTML(profile.phone || "")}" /></div>
+        <button class="btn secondary full" type="submit">حفظ بيانات الحساب</button>
       </form>
+    </section>
+    <section class="data-panel">
+      <span class="eyebrow">أمان الحساب</span>
+      <h3>تغيير كلمة المرور</h3>
+      <form id="passwordForm" class="form-grid" autocomplete="off">
+        <div class="form-field full"><label for="currentAdminPassword">كلمة المرور الحالية</label><input id="currentAdminPassword" type="password" required /></div>
+        <div class="form-field"><label for="newAdminPassword">كلمة المرور الجديدة</label><input id="newAdminPassword" type="password" minlength="8" required /></div>
+        <div class="form-field"><label for="confirmAdminPassword">تأكيد كلمة المرور</label><input id="confirmAdminPassword" type="password" minlength="8" required /></div>
+        <button class="btn secondary full" type="submit">تغيير كلمة المرور</button>
+      </form>
+    </section>
+    ${APP_STATE.session?.role === "admin" ? renderSettingsAccountsSection() : ""}
+  `;
+}
+
+function renderSettingsAccountsSection() {
+  const users = APP_STATE.dashboard?.users || [];
+  return `
+    <section class="data-panel">
+      <span class="eyebrow">إدارة الحسابات</span>
+      <h3>الحسابات</h3>
+      ${users.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>الدور</th><th>رقم الهاتف</th><th>الحالة</th><th>آخر دخول</th><th>الإجراءات</th></tr></thead>
+            <tbody>
+              ${users.map((user) => `
+                <tr>
+                  <td>${escapeHTML(user.fullName || "-")}</td>
+                  <td>${escapeHTML(user.email || "-")}</td>
+                  <td>${escapeHTML(user.role || "-")}</td>
+                  <td>${escapeHTML(user.phone || "-")}</td>
+                  <td>${user.isActive ? "نشط" : "موقوف"}</td>
+                  <td>${formatDateTime(user.lastLoginAt)}</td>
+                  <td>
+                    <button class="btn ghost small" type="button" data-settings-account-edit="${user.id}">تعديل البيانات</button>
+                    ${user.role !== "owner" ? `<button class="btn secondary small" type="button" data-settings-account-reset="${user.id}">إعادة تعيين كلمة المرور</button>` : ""}
+                    ${user.isActive
+                      ? (user.role !== "owner" && user.id !== APP_STATE.session?.id ? `<button class="btn danger small" type="button" data-settings-account-disable="${user.id}">إيقاف الحساب</button>` : "")
+                      : `<button class="btn primary small" type="button" data-settings-account-enable="${user.id}">تفعيل الحساب</button>`}
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : EmptyState("لا توجد حسابات متاحة حاليًا.", "سيتم عرض الحسابات هنا بعد إضافتها.")}
     </section>
   `;
 }
@@ -51,23 +99,20 @@ function bindSettingsForm() {
     });
   }
 
-  const accountForm = qs("#accountForm");
-  if (accountForm) {
-    accountForm.addEventListener("submit", async (event) => {
+  const profileForm = qs("#profileForm");
+  if (profileForm) {
+    profileForm.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const button = qs("#accountForm button[type='submit']");
-      setButtonLoading(button, true, "جاري التحديث...");
+      const button = qs("#profileForm button[type='submit']");
+      setButtonLoading(button, true, "جاري الحفظ...");
       try {
-        const newEmail = qs("#newAdminEmail").value.trim().toLowerCase();
-        const currentPassword = qs("#currentAdminPassword").value;
-        const newPassword = qs("#newAdminPassword").value;
-        await AdminAPI.updateAccount({
-          current_password: currentPassword,
-          new_email: newEmail,
-          new_password: newPassword,
+        const result = await AdminAPI.updateProfile({
+          full_name: qs("#profileFullName").value.trim(),
+          email: qs("#profileEmail").value.trim().toLowerCase(),
+          phone: qs("#profilePhone").value.trim(),
         });
-        showToast("تم تحديث بيانات الدخول بنجاح.", "success");
-        accountForm.reset();
+        APP_STATE.session = result.admin || result.profile || APP_STATE.session;
+        showToast("تم تحديث بيانات الحساب بنجاح.", "success");
         await loadDashboard();
       } catch (error) {
         showToast(error.message, "error");
@@ -75,5 +120,101 @@ function bindSettingsForm() {
         setButtonLoading(button, false);
       }
     });
+  }
+
+  const passwordForm = qs("#passwordForm");
+  if (passwordForm) {
+    passwordForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = qs("#passwordForm button[type='submit']");
+      setButtonLoading(button, true, "جاري التحديث...");
+      try {
+        await AdminAPI.changePassword({
+          current_password: qs("#currentAdminPassword").value,
+          new_password: qs("#newAdminPassword").value,
+          confirm_password: qs("#confirmAdminPassword").value,
+        });
+        showToast("تم تغيير كلمة المرور بنجاح.", "success");
+        passwordForm.reset();
+      } catch (error) {
+        showToast(error.message, "error");
+      } finally {
+        setButtonLoading(button, false);
+      }
+    });
+  }
+
+  qsa("[data-settings-account-edit]").forEach((button) => button.addEventListener("click", () => openSettingsAccountEdit(button.dataset.settingsAccountEdit)));
+  qsa("[data-settings-account-reset]").forEach((button) => button.addEventListener("click", () => openSettingsAccountPasswordReset(button.dataset.settingsAccountReset)));
+  qsa("[data-settings-account-disable]").forEach((button) => button.addEventListener("click", () => toggleSettingsAccountStatus(button.dataset.settingsAccountDisable, false)));
+  qsa("[data-settings-account-enable]").forEach((button) => button.addEventListener("click", () => toggleSettingsAccountStatus(button.dataset.settingsAccountEnable, true)));
+}
+
+function openSettingsAccountEdit(userId) {
+  const user = (APP_STATE.dashboard?.users || []).find((item) => item.id === userId);
+  if (!user) return;
+  const roles = user.role === "owner" ? ["owner"] : ["assistant", "accountant", "viewer"];
+  openModal(`
+    <span class="eyebrow">إدارة الحسابات</span>
+    <h2>تعديل البيانات</h2>
+    <form id="settingsAccountEditForm" class="form-grid" autocomplete="off">
+      <div class="form-field"><label>الاسم</label><input name="full_name" value="${escapeHTML(user.fullName || "")}" required /></div>
+      <div class="form-field"><label>البريد الإلكتروني</label><input name="email" type="email" value="${escapeHTML(user.email || "")}" required /></div>
+      <div class="form-field"><label>رقم الهاتف</label><input name="phone" value="${escapeHTML(user.phone || "")}" /></div>
+      <div class="form-field"><label>الدور</label><select name="role">${roles.map((role) => `<option value="${role}" ${role === user.role ? "selected" : ""}>${escapeHTML(role)}</option>`).join("")}</select></div>
+      <button class="btn primary full" type="submit">حفظ التعديل</button>
+    </form>
+  `);
+  qs("#settingsAccountEditForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      await AdminAPI.updateUser(userId, {
+        full_name: form.get("full_name"),
+        email: String(form.get("email") || "").toLowerCase(),
+        phone: form.get("phone"),
+        role: form.get("role"),
+      });
+      closeModal();
+      showToast("تم حفظ بيانات الحساب.", "success");
+      await loadDashboard();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+}
+
+function openSettingsAccountPasswordReset(userId) {
+  openModal(`
+    <span class="eyebrow">إدارة الحسابات</span>
+    <h2>إعادة تعيين كلمة المرور</h2>
+    <form id="settingsAccountResetForm" class="form-grid" autocomplete="off">
+      <div class="form-field full"><label>كلمة المرور المؤقتة</label><input name="temporary_password" type="password" minlength="8" required /></div>
+      <button class="btn primary full" type="submit">إعادة التعيين</button>
+    </form>
+  `);
+  qs("#settingsAccountResetForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      await AdminAPI.resetUserPassword(userId, { temporary_password: form.get("temporary_password") });
+      closeModal();
+      showToast("تمت إعادة تعيين كلمة المرور.", "success");
+      await loadDashboard();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+}
+
+async function toggleSettingsAccountStatus(userId, enabled) {
+  if (!confirm(enabled ? "هل تريد تفعيل هذا الحساب؟" : "هل تريد إيقاف هذا الحساب؟")) return;
+  try {
+    if (enabled) await AdminAPI.enableUser(userId);
+    else await AdminAPI.disableUser(userId);
+    showToast(enabled ? "تم تفعيل الحساب." : "تم إيقاف الحساب.", "success");
+    await loadDashboard();
+  } catch (error) {
+    showToast(error.message, "error");
   }
 }

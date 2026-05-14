@@ -20,6 +20,11 @@ async function handleStaffLogin(event) {
     APP_STATE.session = result.admin;
     qs("#staffLoginModal").hidden = true;
     qs("#staffLoginForm").reset();
+    if (result.must_change_password || result.admin?.mustChangePassword) {
+      showStaffApp();
+      openMustChangePasswordDialog();
+      return;
+    }
     await loadDashboard();
     showStaffApp();
   } catch (error) {
@@ -33,6 +38,11 @@ async function restoreSession() {
   try {
     const result = await AuthAPI.me();
     APP_STATE.session = result.admin;
+    if (result.admin?.mustChangePassword) {
+      showStaffApp();
+      openMustChangePasswordDialog();
+      return;
+    }
     await loadDashboard();
     showStaffApp();
   } catch {
@@ -43,7 +53,38 @@ async function restoreSession() {
 function showStaffApp() {
   document.body.classList.add("dashboard-open");
   qs("#staffApp").hidden = false;
+  if (window.location.hash !== "#dashboard") {
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}#dashboard`);
+  }
   renderDashboardShell();
+}
+
+function openMustChangePasswordDialog() {
+  openModal(`
+    <span class="eyebrow">بيانات الدخول</span>
+    <h2>تغيير كلمة المرور مطلوب</h2>
+    <form id="mustChangePasswordForm" class="form-grid" autocomplete="off">
+      <div class="form-field full"><label for="forcedCurrentPassword">كلمة المرور المؤقتة</label><input id="forcedCurrentPassword" type="password" required /></div>
+      <div class="form-field"><label for="forcedNewPassword">كلمة المرور الجديدة</label><input id="forcedNewPassword" type="password" minlength="8" required /></div>
+      <div class="form-field"><label for="forcedConfirmPassword">تأكيد كلمة المرور</label><input id="forcedConfirmPassword" type="password" minlength="8" required /></div>
+      <button class="btn primary full" type="submit">تغيير كلمة المرور</button>
+    </form>
+  `);
+  qs("#mustChangePasswordForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await AdminAPI.changePassword({
+        current_password: qs("#forcedCurrentPassword").value,
+        new_password: qs("#forcedNewPassword").value,
+        confirm_password: qs("#forcedConfirmPassword").value,
+      });
+      closeModal();
+      showToast("تم تغيير كلمة المرور بنجاح.", "success");
+      await loadDashboard();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
 }
 
 async function logoutStaff() {
@@ -53,6 +94,9 @@ async function logoutStaff() {
   APP_STATE.owner = null;
   document.body.classList.remove("dashboard-open");
   qs("#staffApp").hidden = true;
+  if (window.location.hash === "#dashboard") {
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  }
 }
 
 async function loadDashboard() {

@@ -1,4 +1,17 @@
 :root {
+  --bg-main: #0b111d;
+  --bg-card: #141c2b;
+  --bg-card-soft: #1b2536;
+  --bg-elevated: #202b3d;
+  --gold: #d6b25e;
+  --gold-soft: #f1d38a;
+  --text-main: #f8f4e8;
+  --text-muted: #c8c0ad;
+  --text-strong: #ffffff;
+  --border-soft: rgba(214, 178, 94, 0.28);
+  --success: #35c27a;
+  --warning: #f2c94c;
+  --danger: #ff6b6b;
   --bg: #0f1118;
   --bg-soft: #171a23;
   --surface: #1f2430;
@@ -9,13 +22,9 @@
   --muted: #c3b9a2;
   --ink: #171c26;
   --ink-muted: #5f6776;
-  --gold: #d7b062;
   --gold-2: #b98940;
   --line: rgba(215, 176, 98, 0.28);
   --line-dark: rgba(23, 28, 38, 0.12);
-  --danger: #d86a62;
-  --success: #4ea27a;
-  --warning: #d59f3d;
   --info: #4f89bf;
   --shadow: 0 28px 74px rgba(3, 6, 14, 0.34);
   --shadow-soft: 0 12px 34px rgba(5, 9, 19, 0.2);

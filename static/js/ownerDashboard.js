@@ -16,6 +16,7 @@ const OWNER_SETTINGS_TABS = [
   ["office", "بيانات المكتب"],
   ["pricing", "إعدادات الأسعار"],
   ["permissions", "إعدادات الصلاحيات"],
+  ["accounts", "إدارة الحسابات"],
   ["system", "إعدادات النظام"],
   ["media", "الوسائط والتحديثات"],
 ];
@@ -295,6 +296,8 @@ function renderOwnerDealCard(deal) {
           <button class="btn secondary small" type="button" data-owner-deal-revision="${deal.id}">طلب تعديل</button>
           <button class="btn danger small" type="button" data-owner-deal-reject="${deal.id}">رفض</button>
         ` : ""}
+        ${deal.status === "draft" ? `<button class="btn danger small" type="button" data-owner-deal-delete="${deal.id}">حذف المسودة</button>` : ""}
+        ${!["cancelled", "rejected"].includes(deal.status) ? `<button class="btn danger small" type="button" data-owner-deal-cancel="${deal.id}">إلغاء الديل</button>` : ""}
       </footer>
     </article>
   `;
@@ -311,12 +314,20 @@ async function handleOwnerDealClick(event) {
     || target.dataset.ownerDealEdit
     || target.dataset.ownerDealApprove
     || target.dataset.ownerDealReject
-    || target.dataset.ownerDealRevision;
+    || target.dataset.ownerDealRevision
+    || target.dataset.ownerDealCancel
+    || target.dataset.ownerDealDelete;
   if (!dealId) return;
 
   try {
     if (target.dataset.ownerDealDetails) return openOwnerDealDetails(dealId);
     if (target.dataset.ownerDealEdit) return openOwnerDealEdit(dealId);
+    if (target.dataset.ownerDealCancel) return openCancelDealDialog(dealId, "owner");
+    if (target.dataset.ownerDealDelete) {
+      if (!confirm("هل أنت متأكد من حذف مسودة الديل؟")) return;
+      await OwnerAPI.deleteDraftDeal(dealId);
+      showToast("تم حذف مسودة الديل بنجاح.", "success");
+    }
     if (target.dataset.ownerDealApprove) {
       if (!confirm("هل أنت متأكد من الموافقة على هذا الديل؟")) return;
       await OwnerAPI.approveDeal(dealId);
@@ -486,22 +497,24 @@ function renderOwnerClientsTable() {
         <thead><tr><th>اسم العميل</th><th>كود الحجز</th><th>رقم الهاتف</th><th>رقم الشقة</th><th>الدور</th><th>السعر الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحجز</th><th>الدفع</th><th>الإجراءات</th></tr></thead>
         <tbody>${groups.map((client) => `
           <tr>
-            <td>${escapeHTML(client.name)}</td>
-            <td>${escapeHTML(client.code)}</td>
-            <td>${escapeHTML(client.phone || "-")}</td>
-            <td>${escapeHTML(client.units.join("، "))}</td>
-            <td>${escapeHTML([...new Set(client.apartments.map((apt) => apt?.floorNumber).filter(Boolean))].join("، ") || "-")}</td>
-            <td>${formatMoney(client.totalAmount)}</td>
-            <td>${formatMoney(client.paidAmount)}</td>
-            <td>${formatMoney(client.remainingAmount)}</td>
-            <td>${StatusBadge(client.reservationStatus)}</td>
-            <td>${StatusBadge(client.paymentStatus)}</td>
-            <td class="table-actions">
+            <td data-label="اسم العميل">${escapeHTML(client.name)}</td>
+            <td data-label="كود الحجز">${escapeHTML(client.code)}</td>
+            <td data-label="رقم الهاتف">${escapeHTML(client.phone || "-")}</td>
+            <td data-label="رقم الشقة">${escapeHTML(client.units.join("، "))}</td>
+            <td data-label="الدور">${escapeHTML([...new Set(client.apartments.map((apt) => apt?.floorNumber).filter(Boolean))].join("، ") || "-")}</td>
+            <td data-label="السعر الإجمالي" data-money>${formatMoney(client.totalAmount)}</td>
+            <td data-label="المدفوع" data-money>${formatMoney(client.paidAmount)}</td>
+            <td data-label="المتبقي" data-money>${formatMoney(client.remainingAmount)}</td>
+            <td data-label="الحجز">${StatusBadge(client.reservationStatus)}</td>
+            <td data-label="الدفع">${StatusBadge(client.paymentStatus)}</td>
+            <td data-label="الإجراءات" class="table-actions">
               <button class="btn ghost small" type="button" data-owner-client-profile="${client.code}">عرض الملف</button>
               <button class="btn primary small" type="button" data-owner-client-payment="${client.code}">إضافة دفعة</button>
               <button class="btn secondary small" type="button" data-owner-client-add-unit="${client.id}">إضافة شقة</button>
               <button class="btn ghost small" type="button" data-owner-client-statement="${client.id}" data-client-code="${client.code}">كشف الحجز</button>
               <button class="btn secondary small" type="button" data-owner-client-whatsapp="${client.phone || ""}">واتساب</button>
+              <button class="btn danger small" type="button" data-owner-client-cancel="${escapeHTML(client.ids.join(","))}" data-client-name="${escapeHTML(client.name)}">إلغاء الحجز</button>
+              <button class="btn danger small" type="button" data-owner-client-delete="${escapeHTML(client.ids.join(","))}" data-client-name="${escapeHTML(client.name)}">حذف</button>
             </td>
           </tr>
         `).join("")}</tbody>
@@ -522,9 +535,9 @@ function renderOwnerApartmentsTable() {
           const client = (ownerData().clients || []).find((item) => item.apartmentId === apt.id);
           return `
             <tr>
-              <td>${escapeHTML(apt.unitCode)}</td><td>${apt.floorNumber}</td><td>${escapeHTML(apt.apartmentType)}</td><td>${apt.area}م</td><td>${escapeHTML(apt.directionAr)}</td><td>${formatMoney(apt.price)}</td><td>${StatusBadge(apt.status)}</td>
-              <td>${escapeHTML(client?.name || "-")}</td><td>${formatMoney(client?.paidAmount || 0)}</td><td>${formatMoney(client?.remainingAmount || 0)}</td>
-              <td class="table-actions"><button class="btn ghost small" data-owner-apartment-edit="${apt.id}" type="button">تعديل / حجز</button><button class="btn ghost small" data-owner-apartment-history="${apt.id}" type="button">سجل الوحدة</button></td>
+              <td data-label="رقم الشقة">${escapeHTML(apt.unitCode)}</td><td data-label="الدور">${apt.floorNumber}</td><td data-label="النوع">${escapeHTML(apt.apartmentType)}</td><td data-label="المساحة">${apt.area}م</td><td data-label="الاتجاه">${escapeHTML(apt.directionAr)}</td><td data-label="السعر" data-money>${formatMoney(apt.price)}</td><td data-label="الحالة">${StatusBadge(apt.status)}</td>
+              <td data-label="العميل المرتبط">${escapeHTML(client?.name || "-")}</td><td data-label="المدفوع" data-money>${formatMoney(client?.paidAmount || 0)}</td><td data-label="المتبقي" data-money>${formatMoney(client?.remainingAmount || 0)}</td>
+              <td data-label="الإجراءات" class="table-actions"><button class="btn ghost small" data-owner-apartment-edit="${apt.id}" type="button">تعديل / حجز</button><button class="btn ghost small" data-owner-apartment-history="${apt.id}" type="button">سجل الوحدة</button></td>
             </tr>`;
         }).join("")}</tbody>
       </table>
@@ -575,8 +588,8 @@ function renderOwnerPaymentsTable() {
           const apt = (ownerData().apartments || []).find((item) => item.id === payment.apartmentId);
           return `
             <tr>
-              <td>${escapeHTML(client?.name || "-")}</td><td>${escapeHTML(apt?.unitCode || "-")}</td><td>${formatDate(payment.date)}</td><td>${formatMoney(payment.amount)}</td><td>${escapeHTML(statusLabel(payment.method))}</td><td>${StatusBadge(payment.status)}</td><td>${escapeHTML(payment.receiptNumber || payment.reference || "-")}</td>
-              <td class="table-actions"><button class="btn ghost small" data-owner-payment-view="${payment.id}" type="button">عرض</button><button class="btn ghost small" data-owner-payment-receipt="${payment.id}" type="button">إيصال</button></td>
+              <td data-label="اسم العميل">${escapeHTML(client?.name || "-")}</td><td data-label="رقم الشقة">${escapeHTML(apt?.unitCode || "-")}</td><td data-label="تاريخ الدفع">${formatDate(payment.date)}</td><td data-label="المبلغ" data-money>${formatMoney(payment.amount)}</td><td data-label="طريقة الدفع">${escapeHTML(statusLabel(payment.method))}</td><td data-label="حالة الدفعة">${StatusBadge(payment.status)}</td><td data-label="رقم الإيصال">${escapeHTML(payment.receiptNumber || payment.reference || "-")}</td>
+              <td data-label="الإجراءات" class="table-actions"><button class="btn ghost small" data-owner-payment-view="${payment.id}" type="button">عرض</button><button class="btn ghost small" data-owner-payment-receipt="${payment.id}" type="button">إيصال</button></td>
             </tr>`;
         }).join("")}</tbody>
       </table>
@@ -593,6 +606,8 @@ async function handleOwnerOperationsClick(event) {
     if (target.dataset.ownerClientAddUnit) return openClientFormForExistingClient(target.dataset.ownerClientAddUnit);
     if (target.dataset.ownerClientStatement) return downloadFile(ClientAPI.statementUrl(target.dataset.ownerClientStatement, target.dataset.clientCode));
     if (target.dataset.ownerClientWhatsapp) return openOwnerWhatsapp(target.dataset.ownerClientWhatsapp);
+    if (target.dataset.ownerClientCancel) return cancelOwnerClientGroup(target.dataset.ownerClientCancel, target.dataset.clientName);
+    if (target.dataset.ownerClientDelete) return deleteOwnerClientGroup(target.dataset.ownerClientDelete, target.dataset.clientName);
     if (target.dataset.ownerApartmentEdit) return openOwnerApartmentEdit(target.dataset.ownerApartmentEdit);
     if (target.dataset.ownerApartmentHistory) return openOwnerApartmentHistory(target.dataset.ownerApartmentHistory);
     if (target.dataset.ownerPaymentReceipt) {
@@ -626,12 +641,82 @@ function openOwnerClientProfile(code) {
       <button class="btn secondary" type="button" data-profile-add-unit="${escapeHTML(client.id)}">إضافة شقة</button>
       <button class="btn ghost" type="button" data-profile-statement="${escapeHTML(client.id)}" data-client-code="${escapeHTML(client.code)}">كشف حساب</button>
       <button class="btn ghost" type="button" data-profile-whatsapp="${escapeHTML(client.phone || "")}">واتساب</button>
+      <button class="btn danger" type="button" data-profile-cancel="${escapeHTML(client.ids.join(","))}" data-client-name="${escapeHTML(client.name)}">إلغاء الحجز</button>
+      <button class="btn danger" type="button" data-profile-delete="${escapeHTML(client.ids.join(","))}" data-client-name="${escapeHTML(client.name)}">حذف</button>
     </div>
   `);
   qs("[data-profile-payment]")?.addEventListener("click", (event) => openOwnerClientPayment(event.currentTarget.dataset.profilePayment));
   qs("[data-profile-add-unit]")?.addEventListener("click", (event) => openClientFormForExistingClient(event.currentTarget.dataset.profileAddUnit));
   qs("[data-profile-statement]")?.addEventListener("click", (event) => downloadFile(ClientAPI.statementUrl(event.currentTarget.dataset.profileStatement, event.currentTarget.dataset.clientCode)));
   qs("[data-profile-whatsapp]")?.addEventListener("click", (event) => openOwnerWhatsapp(event.currentTarget.dataset.profileWhatsapp));
+  qs("[data-profile-cancel]")?.addEventListener("click", (event) => cancelOwnerClientGroup(event.currentTarget.dataset.profileCancel, event.currentTarget.dataset.clientName));
+  qs("[data-profile-delete]")?.addEventListener("click", (event) => deleteOwnerClientGroup(event.currentTarget.dataset.profileDelete, event.currentTarget.dataset.clientName));
+}
+
+async function cancelOwnerClientGroup(clientIds, clientName) {
+  const ids = (clientIds || "").split(",").map((value) => value.trim()).filter(Boolean);
+  if (!ids.length) return;
+  const reason = prompt(`اكتب سبب إلغاء حجز العميل "${clientName || ""}":`);
+  if (!reason) return;
+  try {
+    for (const id of ids) {
+      await AdminAPI.cancelClient(id, reason);
+    }
+    closeModal();
+    showToast("تم إلغاء الحجز وتحرير الشقة بنجاح.", "success");
+    await loadDashboard();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function deleteOwnerClientGroup(clientIds, clientName) {
+  const ids = (clientIds || "").split(",").map((value) => value.trim()).filter(Boolean);
+  if (!ids.length) return;
+  openModal(`
+    <span class="eyebrow">حذف العميل</span>
+    <h2>${escapeHTML(clientName || "عميل")}</h2>
+    <p class="muted">اختر إلغاء الحجز للاحتفاظ بالسجل المالي، أو حذف العميل مع سجله المالي بعد تأكيد كلمة المرور.</p>
+    <form id="ownerClientDeleteChoiceForm" class="form-grid" autocomplete="off">
+      <div class="form-field full"><label for="clientDeleteReason">سبب الإجراء</label><textarea id="clientDeleteReason" required></textarea></div>
+      <div class="form-field full"><label for="clientDeletePassword">كلمة المرور مطلوبة للحذف بالسجل المالي فقط</label><input id="clientDeletePassword" type="password" autocomplete="current-password" /></div>
+      <button class="btn secondary" type="button" id="cancelClientReservationButton">إلغاء الحجز</button>
+      <button class="btn danger" type="button" id="deleteClientWithRecordsButton">حذف بالسجل المالي</button>
+      <button class="btn ghost full" type="button" id="backFromClientDeleteButton">تراجع</button>
+    </form>
+  `);
+  qs("#backFromClientDeleteButton")?.addEventListener("click", closeModal);
+  qs("#cancelClientReservationButton")?.addEventListener("click", async () => {
+    const reason = qs("#clientDeleteReason").value.trim();
+    if (!reason) return showToast("سبب الإجراء مطلوب.", "error");
+    try {
+      for (const id of ids) {
+        await AdminAPI.cancelClient(id, reason);
+      }
+      closeModal();
+      showToast("تم إلغاء الحجز وتحرير الشقة بنجاح.", "success");
+      await loadDashboard();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+  qs("#deleteClientWithRecordsButton")?.addEventListener("click", async () => {
+    const reason = qs("#clientDeleteReason").value.trim();
+    const password = qs("#clientDeletePassword").value;
+    if (!reason) return showToast("سبب الإجراء مطلوب.", "error");
+    if (!password) return showToast("يرجى إدخال كلمة المرور لتأكيد الحذف.", "error");
+    if (!confirm("سيتم حذف العميل وسجله المالي نهائيًا. هل أنت متأكد؟")) return;
+    try {
+      for (const id of ids) {
+        await AdminAPI.deleteClientWithRecords(id, { reason, password });
+      }
+      closeModal();
+      showToast("تم حذف العميل مع السجل المالي بنجاح.", "success");
+      await loadDashboard();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
 }
 
 function openOwnerClientPayment(code) {
@@ -796,6 +881,11 @@ function bindOwnerSettings() {
     });
   });
   qs("#ownerSettingsForm")?.addEventListener("submit", saveOwnerSettingsForm);
+  qs("#accountUserForm")?.addEventListener("submit", createAccountUser);
+  content.querySelectorAll("[data-account-edit]").forEach((button) => button.addEventListener("click", () => openAccountEdit(button.dataset.accountEdit)));
+  content.querySelectorAll("[data-account-reset]").forEach((button) => button.addEventListener("click", () => openAccountPasswordReset(button.dataset.accountReset)));
+  content.querySelectorAll("[data-account-disable]").forEach((button) => button.addEventListener("click", () => toggleAccountStatus(button.dataset.accountDisable, false)));
+  content.querySelectorAll("[data-account-enable]").forEach((button) => button.addEventListener("click", () => toggleAccountStatus(button.dataset.accountEnable, true)));
 }
 
 function renderOwnerSettingsTab() {
@@ -803,6 +893,7 @@ function renderOwnerSettingsTab() {
   const tab = APP_STATE.ownerSettingsTab || "office";
   if (tab === "pricing") return renderPriceSettings(settings.priceSettings || {});
   if (tab === "permissions") return renderPermissionSettings(settings.permissionSettings || {});
+  if (tab === "accounts") return renderAccountsSettings();
   if (tab === "system") return renderSystemSettings(settings.systemSettings || {});
   if (tab === "media") return renderMediaSettings(settings.mediaSettings || {});
   return renderOfficeSettings(settings.office || {});
@@ -838,6 +929,194 @@ function renderPermissionSettings(settings) {
     ${settingsCheckbox("منع المساعد من رؤية الأسعار المالية العامة", "hide_global_financials_from_assistant", settings.hide_global_financials_from_assistant)}
     ${settingsCheckbox("منع المساعد من رؤية عملاء غير تابعين له", "assistant_own_clients_only", settings.assistant_own_clients_only)}
   `, "حفظ إعدادات الصلاحيات");
+}
+
+function renderAssistantUsersSettings() {
+  const assistants = (APP_STATE.dashboard?.users || []).filter((user) => user.role === "assistant");
+  return `
+    <div class="two-column">
+      <section class="data-panel owner-panel">
+        <span class="eyebrow">إضافة مساعد</span>
+        <h3>حساب مساعد جديد</h3>
+        <form id="assistantUserForm" class="form-grid" autocomplete="off">
+          <div class="form-field"><label for="assistantName">اسم المساعد</label><input id="assistantName" required /></div>
+          <div class="form-field"><label for="assistantEmail">البريد الإلكتروني</label><input id="assistantEmail" type="email" required /></div>
+          <div class="form-field full"><label for="assistantPassword">كلمة المرور</label><input id="assistantPassword" type="password" minlength="8" placeholder="Assistant@12345" /></div>
+          <button class="btn primary full" type="submit">إضافة مساعد</button>
+        </form>
+      </section>
+      <section class="data-panel owner-panel">
+        <span class="eyebrow">المساعدين</span>
+        <h3>الحسابات الحالية</h3>
+        ${assistants.length ? `
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>تاريخ الإضافة</th></tr></thead>
+              <tbody>
+                ${assistants.map((assistant) => `
+                  <tr>
+                    <td data-label="الاسم">${escapeHTML(assistant.fullName || assistant.name || "-")}</td>
+                    <td data-label="البريد الإلكتروني">${escapeHTML(assistant.email || "-")}</td>
+                    <td data-label="تاريخ الإضافة">${formatDate(assistant.createdAt)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : EmptyState("لا يوجد مساعدين حاليًا.", "أضف أول مساعد من النموذج الموجود بجانب القائمة.")}
+      </section>
+    </div>
+  `;
+}
+
+function renderAccountsSettings() {
+  const users = APP_STATE.dashboard?.users || [];
+  return `
+    <div class="two-column">
+      <section class="data-panel owner-panel">
+        <span class="eyebrow">إدارة الحسابات</span>
+        <h3>إضافة حساب</h3>
+        <form id="accountUserForm" class="form-grid" autocomplete="off">
+          <div class="form-field"><label for="accountName">الاسم</label><input id="accountName" required /></div>
+          <div class="form-field"><label for="accountEmail">البريد الإلكتروني</label><input id="accountEmail" type="email" required /></div>
+          <div class="form-field"><label for="accountPhone">رقم الهاتف</label><input id="accountPhone" /></div>
+          <div class="form-field"><label for="accountRole">الدور</label><select id="accountRole">${["admin", "assistant", "accountant", "viewer"].map((role) => `<option value="${role}">${escapeHTML(role)}</option>`).join("")}</select></div>
+          <div class="form-field full"><label for="accountPassword">كلمة المرور المؤقتة</label><input id="accountPassword" type="password" minlength="8" placeholder="Assistant@12345" /></div>
+          <button class="btn primary full" type="submit">إضافة الحساب</button>
+        </form>
+      </section>
+      <section class="data-panel owner-panel">
+        <span class="eyebrow">إدارة الحسابات</span>
+        <h3>الحسابات الحالية</h3>
+        ${users.length ? renderAccountsTable(users) : EmptyState("لا توجد حسابات متاحة حاليًا.", "سيتم عرض الحسابات هنا بعد إضافتها.")}
+      </section>
+    </div>
+  `;
+}
+
+function renderAccountsTable(users) {
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>الدور</th><th>رقم الهاتف</th><th>الحالة</th><th>آخر دخول</th><th>الإجراءات</th></tr></thead>
+        <tbody>
+          ${users.map((user) => {
+            const isSelf = user.id === APP_STATE.session?.id;
+            const isOwner = user.role === "owner";
+            return `
+              <tr>
+                <td data-label="الاسم">${escapeHTML(user.fullName || "-")}</td>
+                <td data-label="البريد الإلكتروني">${escapeHTML(user.email || "-")}</td>
+                <td data-label="الدور">${escapeHTML(user.role || "-")}</td>
+                <td data-label="رقم الهاتف">${escapeHTML(user.phone || "-")}</td>
+                <td data-label="الحالة">${user.isActive ? "نشط" : "موقوف"}</td>
+                <td data-label="آخر دخول">${formatDateTime(user.lastLoginAt)}</td>
+                <td data-label="الإجراءات">
+                  <button class="btn ghost small" type="button" data-account-edit="${user.id}">تعديل البيانات</button>
+                  ${!isOwner ? `<button class="btn secondary small" type="button" data-account-reset="${user.id}">إعادة تعيين كلمة المرور</button>` : ""}
+                  ${user.isActive
+                    ? (!isOwner && !isSelf ? `<button class="btn danger small" type="button" data-account-disable="${user.id}">إيقاف الحساب</button>` : "")
+                    : `<button class="btn primary small" type="button" data-account-enable="${user.id}">تفعيل الحساب</button>`}
+                </td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function createAccountUser(event) {
+  event.preventDefault();
+  const button = qs("#accountUserForm button[type='submit']");
+  setButtonLoading(button, true, "جاري إضافة الحساب...");
+  try {
+    await AdminAPI.createUser({
+      full_name: qs("#accountName").value.trim(),
+      email: qs("#accountEmail").value.trim().toLowerCase(),
+      phone: qs("#accountPhone").value.trim(),
+      role: qs("#accountRole").value,
+      password: qs("#accountPassword").value || "Assistant@12345",
+    });
+    showToast("تم إضافة الحساب بنجاح.", "success");
+    await loadDashboard();
+    APP_STATE.ownerSettingsTab = "accounts";
+    renderActiveDashboardView();
+  } catch (error) {
+    showToast(error.message || "حدث خطأ أثناء إضافة الحساب.", "error");
+  } finally {
+    setButtonLoading(button, false);
+  }
+}
+
+function openAccountEdit(userId) {
+  const user = (APP_STATE.dashboard?.users || []).find((item) => item.id === userId);
+  if (!user) return;
+  const roles = ["admin", "assistant", "accountant", "viewer"];
+  openModal(`
+    <span class="eyebrow">إدارة الحسابات</span>
+    <h2>تعديل البيانات</h2>
+    <form id="accountEditForm" class="form-grid" autocomplete="off">
+      <div class="form-field"><label>الاسم</label><input name="full_name" value="${escapeHTML(user.fullName || "")}" required /></div>
+      <div class="form-field"><label>البريد الإلكتروني</label><input name="email" type="email" value="${escapeHTML(user.email || "")}" required /></div>
+      <div class="form-field"><label>رقم الهاتف</label><input name="phone" value="${escapeHTML(user.phone || "")}" /></div>
+      <div class="form-field"><label>الدور</label><select name="role">${(user.role === "owner" ? ["owner"] : roles).map((role) => `<option value="${role}" ${role === user.role ? "selected" : ""}>${escapeHTML(role)}</option>`).join("")}</select></div>
+      <button class="btn primary full" type="submit">حفظ التعديل</button>
+    </form>
+  `);
+  qs("#accountEditForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      await AdminAPI.updateUser(userId, {
+        full_name: form.get("full_name"),
+        email: String(form.get("email") || "").toLowerCase(),
+        phone: form.get("phone"),
+        role: form.get("role"),
+      });
+      closeModal();
+      showToast("تم حفظ بيانات الحساب.", "success");
+      await loadDashboard();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+}
+
+function openAccountPasswordReset(userId) {
+  openModal(`
+    <span class="eyebrow">إدارة الحسابات</span>
+    <h2>إعادة تعيين كلمة المرور</h2>
+    <form id="accountResetForm" class="form-grid" autocomplete="off">
+      <div class="form-field full"><label>كلمة المرور المؤقتة</label><input name="temporary_password" type="password" minlength="8" required /></div>
+      <button class="btn primary full" type="submit">إعادة التعيين</button>
+    </form>
+  `);
+  qs("#accountResetForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      await AdminAPI.resetUserPassword(userId, { temporary_password: form.get("temporary_password") });
+      closeModal();
+      showToast("تمت إعادة تعيين كلمة المرور.", "success");
+      await loadDashboard();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+}
+
+async function toggleAccountStatus(userId, enabled) {
+  if (!confirm(enabled ? "هل تريد تفعيل هذا الحساب؟" : "هل تريد إيقاف هذا الحساب؟")) return;
+  try {
+    if (enabled) await AdminAPI.enableUser(userId);
+    else await AdminAPI.disableUser(userId);
+    showToast(enabled ? "تم تفعيل الحساب." : "تم إيقاف الحساب.", "success");
+    await loadDashboard();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
 }
 
 function renderSystemSettings(settings) {
@@ -893,6 +1172,28 @@ async function saveOwnerSettingsForm(event) {
     await loadDashboard();
   } catch (error) {
     showToast(error.message || "حدث خطأ أثناء حفظ الإعدادات.", "error");
+  }
+}
+
+async function createAssistantUser(event) {
+  event.preventDefault();
+  const button = qs("#assistantUserForm button[type='submit']");
+  setButtonLoading(button, true, "جاري إضافة المساعد...");
+  try {
+    await AdminAPI.createUser({
+      full_name: qs("#assistantName").value.trim(),
+      email: qs("#assistantEmail").value.trim().toLowerCase(),
+      password: qs("#assistantPassword").value || "Assistant@12345",
+      role: "assistant",
+    });
+    showToast("تم إضافة المساعد بنجاح.", "success");
+    await loadDashboard();
+    APP_STATE.ownerSettingsTab = "assistants";
+    renderActiveDashboardView();
+  } catch (error) {
+    showToast(error.message || "حدث خطأ أثناء إضافة المساعد.", "error");
+  } finally {
+    setButtonLoading(button, false);
   }
 }
 

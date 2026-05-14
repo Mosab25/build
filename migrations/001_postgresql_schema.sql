@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS admins (
   password_hash TEXT NOT NULL,
   password_salt TEXT NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
+  last_login_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -125,7 +127,7 @@ CREATE TABLE IF NOT EXISTS deals (
   down_payment DOUBLE PRECISION NOT NULL DEFAULT 0,
   payment_plan TEXT,
   notes TEXT,
-  status TEXT NOT NULL CHECK(status IN ('draft','pending_approval','revision_requested','approved','rejected','finalized')),
+  status TEXT NOT NULL CHECK(status IN ('draft','pending_approval','revision_requested','approved','rejected','finalized','cancelled')),
   owner_notes TEXT,
   approved_by TEXT REFERENCES admins(id),
   approved_at TEXT,

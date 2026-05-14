@@ -56,14 +56,14 @@ function renderApartmentUnitsTable(units = []) {
             const apartment = unit.apartment || {};
             return `
               <tr>
-                <td>${escapeHTML(apartment.unitCode || "-")}</td>
-                <td>${escapeHTML(apartment.floorNumber || "-")}</td>
-                <td>${escapeHTML(apartment.area || "-")} م²</td>
-                <td>${escapeHTML(apartment.directionAr || "-")}</td>
-                <td>${formatMoney(unit.totalAmount)}</td>
-                <td>${formatMoney(unit.paidAmount)}</td>
-                <td>${formatMoney(unit.remainingAmount)}</td>
-                <td>${StatusBadge(unit.paymentStatus)}</td>
+                <td data-label="الوحدة">${escapeHTML(apartment.unitCode || "-")}</td>
+                <td data-label="الدور">${escapeHTML(apartment.floorNumber || "-")}</td>
+                <td data-label="المساحة">${escapeHTML(apartment.area || "-")} م²</td>
+                <td data-label="الاتجاه">${escapeHTML(apartment.directionAr || "-")}</td>
+                <td data-label="الإجمالي" data-money>${formatMoney(unit.totalAmount)}</td>
+                <td data-label="المدفوع" data-money>${formatMoney(unit.paidAmount)}</td>
+                <td data-label="المتبقي" data-money>${formatMoney(unit.remainingAmount)}</td>
+                <td data-label="حالة الدفع">${StatusBadge(unit.paymentStatus)}</td>
               </tr>
             `;
           }).join("")}

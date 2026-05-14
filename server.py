@@ -85,6 +85,7 @@ login_attempts: dict[str, list[float]] = {}
 
 LOGIN_RATE_LIMIT_SECONDS = 15 * 60  # 15 minutes
 LOGIN_RATE_LIMIT_ATTEMPTS = 5  # 5 attempts
+SOLD_PAYMENT_THRESHOLD = 20_000
 
 
 def now_iso() -> str:
@@ -122,22 +123,45 @@ def normalize_code(code: str) -> str:
     return (code or "").strip().upper()
 
 
+def mojibake_bytes(value: str) -> bytes | None:
+    raw = bytearray()
+    for char in value:
+        codepoint = ord(char)
+        if codepoint <= 255:
+            raw.append(codepoint)
+            continue
+        try:
+            raw.extend(char.encode("cp1252"))
+        except UnicodeError:
+            return None
+    return bytes(raw)
+
+
 def normalize_display_text(text: Any) -> str:
     value = str(text if text is not None else "")
     for _ in range(4):
         repaired = value
-        for encoding in ("latin1", "cp1252"):
+        raw = mojibake_bytes(value)
+        if raw is not None:
             try:
-                candidate = value.encode(encoding).decode("utf-8")
+                candidate = raw.decode("utf-8")
             except UnicodeError:
-                continue
+                candidate = value
             if candidate != value:
                 repaired = candidate
-                break
+        if repaired == value:
+            for encoding in ("latin1", "cp1252"):
+                try:
+                    candidate = value.encode(encoding).decode("utf-8")
+                except UnicodeError:
+                    continue
+                if candidate != value:
+                    repaired = candidate
+                    break
         if repaired == value:
             break
         value = repaired
-    value = value.replace("Ã‚Â²", "Â²").replace("Ã¢â‚¬â€", "â€”")
+    value = value.replace("\u00c3\u201a\u00c2\u00b2", "²").replace("\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u20ac\u009d", "—")
     return value
 
 
@@ -189,65 +213,65 @@ def status_title(value: str | None) -> str:
 
 def status_label_ar(value: str | None) -> str:
     mapping = {
-        "available": "Ù…ØªØ§Ø­Ø©",
-        "reserved": "Ù…Ø­Ø¬ÙˆØ²Ø©",
-        "sold": "Ù…Ø¨Ø§Ø¹Ø©",
-        "pending_payment": "ÙÙŠ Ø§Ù†ØªØ¸Ø§Ø± Ø§Ù„Ø³Ø¯Ø§Ø¯",
-        "pending_approval": "Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ù…ÙˆØ§ÙÙ‚Ø© Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©",
-        "frozen": "Ù…Ø¬Ù…Ø¯Ø©",
-        "pending": "Ù‚ÙŠØ¯ Ø§Ù„Ù…Ø±Ø§Ø¬Ø¹Ø©",
-        "confirmed": "Ù…Ø¤ÙƒØ¯",
-        "cancelled": "Ù…Ù„ØºØ§Ø©",
-        "partially_paid": "Ù…Ø¯ÙÙˆØ¹ Ø¬Ø²Ø¦ÙŠÙ‹Ø§",
-        "fully_paid": "Ù…Ø¯ÙÙˆØ¹ Ø¨Ø§Ù„ÙƒØ§Ù…Ù„",
-        "overdue": "Ù…ØªØ£Ø®Ø± Ø§Ù„Ø³Ø¯Ø§Ø¯",
-        "cash": "Ù†Ù‚Ø¯Ù‹Ø§",
-        "bank_transfer": "ØªØ­ÙˆÙŠÙ„ Ø¨Ù†ÙƒÙŠ",
-        "installment": "Ù‚Ø³Ø·",
-        "office_payment": "Ø¯ÙØ¹ ÙÙŠ Ø§Ù„Ù…ÙƒØªØ¨",
-        "other": "Ø£Ø®Ø±Ù‰",
-        "rejected": "Ù…Ø±ÙÙˆØ¶",
-        "upcoming": "Ù‚Ø§Ø¯Ù…",
-        "due": "Ù…Ø³ØªØ­Ù‚",
-        "paid": "Ù…Ø¯ÙÙˆØ¹",
-        "partially_paid_installment": "Ù…Ø¯ÙÙˆØ¹ Ø¬Ø²Ø¦ÙŠÙ‹Ø§",
-        "draft": "Ù…Ø³ÙˆØ¯Ø©",
-        "pending_approval": "Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ù…ÙˆØ§ÙÙ‚Ø© Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©",
-        "revision_requested": "Ù…Ø·Ù„ÙˆØ¨ ØªØ¹Ø¯ÙŠÙ„",
-        "approved": "ØªÙ…Øª Ø§Ù„Ù…ÙˆØ§ÙÙ‚Ø©",
-        "finalized": "ØªÙ… Ø§Ù„Ø¥Ù†Ù‡Ø§Ø¡",
-        "draft_contract": "Ø¹Ù‚Ø¯ Ù…Ø³ÙˆØ¯Ø©",
-        "final_contract": "Ø§Ù„Ø¹Ù‚Ø¯ Ø§Ù„Ù†Ù‡Ø§Ø¦ÙŠ",
-        "issued": "ØµØ§Ø¯Ø±",
-        "Available": "Ù…ØªØ§Ø­Ø©",
-        "Reserved": "Ù…Ø­Ø¬ÙˆØ²Ø©",
-        "Sold": "Ù…Ø¨Ø§Ø¹Ø©",
-        "Pending Payment": "ÙÙŠ Ø§Ù†ØªØ¸Ø§Ø± Ø§Ù„Ø³Ø¯Ø§Ø¯",
-        "Pending Approval": "Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ù…ÙˆØ§ÙÙ‚Ø© Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©",
-        "Frozen": "Ù…Ø¬Ù…Ø¯Ø©",
-        "Pending": "Ù‚ÙŠØ¯ Ø§Ù„Ù…Ø±Ø§Ø¬Ø¹Ø©",
-        "Confirmed": "Ù…Ø¤ÙƒØ¯",
-        "Cancelled": "Ù…Ù„ØºØ§Ø©",
-        "Partially Paid": "Ù…Ø¯ÙÙˆØ¹ Ø¬Ø²Ø¦ÙŠÙ‹Ø§",
-        "Fully Paid": "Ù…Ø¯ÙÙˆØ¹ Ø¨Ø§Ù„ÙƒØ§Ù…Ù„",
-        "Overdue": "Ù…ØªØ£Ø®Ø± Ø§Ù„Ø³Ø¯Ø§Ø¯",
-        "Cash": "Ù†Ù‚Ø¯Ù‹Ø§",
-        "Bank Transfer": "ØªØ­ÙˆÙŠÙ„ Ø¨Ù†ÙƒÙŠ",
-        "Installment": "Ù‚Ø³Ø·",
-        "Office Payment": "Ø¯ÙØ¹ ÙÙŠ Ø§Ù„Ù…ÙƒØªØ¨",
-        "Other": "Ø£Ø®Ø±Ù‰",
-        "Rejected": "Ù…Ø±ÙÙˆØ¶",
-        "Upcoming": "Ù‚Ø§Ø¯Ù…",
-        "Due": "Ù…Ø³ØªØ­Ù‚",
-        "Paid": "Ù…Ø¯ÙÙˆØ¹",
-        "Draft": "Ù…Ø³ÙˆØ¯Ø©",
-        "Pending Approval": "Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ù…ÙˆØ§ÙÙ‚Ø© Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©",
-        "Revision Required": "Ù…Ø·Ù„ÙˆØ¨ ØªØ¹Ø¯ÙŠÙ„",
-        "Approved": "ØªÙ…Øª Ø§Ù„Ù…ÙˆØ§ÙÙ‚Ø©",
-        "Finalized": "ØªÙ… Ø§Ù„Ø¥Ù†Ù‡Ø§Ø¡",
-        "Draft Contract": "Ø¹Ù‚Ø¯ Ù…Ø³ÙˆØ¯Ø©",
-        "Final Contract": "Ø§Ù„Ø¹Ù‚Ø¯ Ø§Ù„Ù†Ù‡Ø§Ø¦ÙŠ",
-        "Issued": "ØµØ§Ø¯Ø±",
+        "available": "متاحة",
+        "reserved": "محجوزة",
+        "sold": "مباعة",
+        "pending_payment": "في انتظار السداد",
+        "pending_approval": "بانتظار موافقة الإدارة",
+        "frozen": "مجمدة",
+        "pending": "قيد المراجعة",
+        "confirmed": "مؤكد",
+        "cancelled": "ملغاة",
+        "partially_paid": "مدفوع جزئيًا",
+        "fully_paid": "مدفوع بالكامل",
+        "overdue": "متأخر السداد",
+        "cash": "نقدًا",
+        "bank_transfer": "تحويل بنكي",
+        "installment": "قسط",
+        "office_payment": "دفع في المكتب",
+        "other": "أخرى",
+        "rejected": "مرفوض",
+        "upcoming": "قادم",
+        "due": "مستحق",
+        "paid": "مدفوع",
+        "partially_paid_installment": "مدفوع جزئيًا",
+        "draft": "مسودة",
+        "pending_approval": "بانتظار موافقة الإدارة",
+        "revision_requested": "مطلوب تعديل",
+        "approved": "تمت الموافقة",
+        "finalized": "تم الإنهاء",
+        "draft_contract": "عقد مسودة",
+        "final_contract": "العقد النهائي",
+        "issued": "صادر",
+        "Available": "متاحة",
+        "Reserved": "محجوزة",
+        "Sold": "مباعة",
+        "Pending Payment": "في انتظار السداد",
+        "Pending Approval": "بانتظار موافقة الإدارة",
+        "Frozen": "مجمدة",
+        "Pending": "قيد المراجعة",
+        "Confirmed": "مؤكد",
+        "Cancelled": "ملغاة",
+        "Partially Paid": "مدفوع جزئيًا",
+        "Fully Paid": "مدفوع بالكامل",
+        "Overdue": "متأخر السداد",
+        "Cash": "نقدًا",
+        "Bank Transfer": "تحويل بنكي",
+        "Installment": "قسط",
+        "Office Payment": "دفع في المكتب",
+        "Other": "أخرى",
+        "Rejected": "مرفوض",
+        "Upcoming": "قادم",
+        "Due": "مستحق",
+        "Paid": "مدفوع",
+        "Draft": "مسودة",
+        "Pending Approval": "بانتظار موافقة الإدارة",
+        "Revision Required": "مطلوب تعديل",
+        "Approved": "تمت الموافقة",
+        "Finalized": "تم الإنهاء",
+        "Draft Contract": "عقد مسودة",
+        "Final Contract": "العقد النهائي",
+        "Issued": "صادر",
     }
     return normalize_display_text(mapping.get(value or "", value or ""))
 
@@ -466,7 +490,7 @@ def init_db() -> None:
               apartment_id TEXT REFERENCES apartments(id),
               proposed_total REAL NOT NULL DEFAULT 0,
               notes TEXT,
-              status TEXT NOT NULL CHECK(status IN ('draft','pending_approval','revision_requested','approved','rejected','finalized')),
+              status TEXT NOT NULL CHECK(status IN ('draft','pending_approval','revision_requested','approved','rejected','finalized','cancelled')),
               owner_notes TEXT,
               approved_by TEXT REFERENCES admins(id),
               approved_at TEXT,
@@ -501,12 +525,16 @@ def init_db() -> None:
 def ensure_admin_role_schema(conn) -> None:
     conn.execute("ALTER TABLE admins ADD COLUMN IF NOT EXISTS phone TEXT")
     conn.execute("ALTER TABLE admins ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
+    conn.execute("ALTER TABLE admins ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE")
+    conn.execute("ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_admins_is_active ON admins(is_active)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_admins_last_login_at ON admins(last_login_at DESC)")
     # Make sure assistant role is accepted on existing PostgreSQL databases.
     try:
         rows = conn.execute(
             """
             SELECT conname FROM pg_constraint
-            WHERE conrelid = 'admins'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%role%'
+            WHERE conrelid = 'admins'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%%role%%'
             """
         ).fetchall()
         for row in rows:
@@ -524,7 +552,7 @@ def ensure_apartment_status_schema(conn) -> None:
         rows = conn.execute(
             """
             SELECT conname FROM pg_constraint
-            WHERE conrelid = 'apartments'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%status%'
+            WHERE conrelid = 'apartments'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%%status%%'
             """
         ).fetchall()
         for row in rows:
@@ -553,6 +581,20 @@ def ensure_deals_owner_schema(conn) -> None:
     conn.execute("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payment_plan TEXT")
     conn.execute("ALTER TABLE deals ADD COLUMN IF NOT EXISTS submitted_at TEXT")
     conn.execute("ALTER TABLE deals ADD COLUMN IF NOT EXISTS finalized_at TEXT")
+    try:
+        rows = conn.execute(
+            """
+            SELECT conname FROM pg_constraint
+            WHERE conrelid = 'deals'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) ILIKE '%%status%%'
+            """
+        ).fetchall()
+        conn.execute("ALTER TABLE deals DROP CONSTRAINT IF EXISTS deals_status_check")
+        conn.execute("ALTER TABLE deals DROP CONSTRAINT IF EXISTS chk_deals_status")
+        for row in rows:
+            conn.execute(f"ALTER TABLE deals DROP CONSTRAINT IF EXISTS {row['conname']}")
+        conn.execute("ALTER TABLE deals ADD CONSTRAINT chk_deals_status CHECK(status IN ('draft','pending_approval','revision_requested','approved','rejected','finalized','cancelled'))")
+    except Exception:
+        pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_deals_client_id ON deals(client_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_deals_status ON deals(status)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_deals_deal_number ON deals(deal_number) WHERE deal_number IS NOT NULL")
@@ -619,17 +661,17 @@ def seed_defaults() -> None:
                 INSERT INTO admins (id, full_name, email, role, password_hash, password_salt, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (public_id("admin"), "Ù…Ø§Ù„Ùƒ Ø§Ù„Ù†Ø¸Ø§Ù…", "admin@example.com", "owner", password_hash, salt, now_iso(), now_iso()),
+                (public_id("admin"), "مالك النظام", "admin@example.com", "owner", password_hash, salt, now_iso(), now_iso()),
             )
 
         settings = {
-            "office_name": "Ù…ÙƒØªØ¨ Ù…ØµØ¹Ø¨ Ø­Ø³Ù† Ø§Ù„Ø¹Ù‚Ø§Ø±ÙŠ",
+            "office_name": "مكتب مصعب حسن العقاري",
             "office_phone": "01090073517",
             "whatsapp_number": "201090073517",
-            "office_address": "Ø£Ø±Ø¶ Ø¹Ø¨Ø¯Ø§Ù„Ø¬Ù„ÙŠÙ„",
+            "office_address": "أرض عبدالجليل",
             "currency": "EGP",
             "receipt_prefix": "RCPT",
-            "statement_footer": "Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³ØªÙ†Ø¯ ØµØ§Ø¯Ø± Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠÙ‹Ø§ Ù…Ù† Ù†Ø¸Ø§Ù… Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø­Ø¬ÙˆØ²Ø§Øª.",
+            "statement_footer": "هذا المستند صادر إلكترونيًا من نظام إدارة الحجوزات.",
         }
         for key, value in settings.items():
             conn.execute(
@@ -640,9 +682,9 @@ def seed_defaults() -> None:
         apt_count = conn.execute("SELECT COUNT(*) FROM apartments").fetchone()[0]
         if apt_count == 0:
             specs = {
-                "A": (137, "Ø¨Ø­Ø±ÙŠ Ù‚Ø¨Ù„ÙŠ", "North/South Facing", 137 * 13500),
-                "B": (125, "Ø¨Ø­Ø±ÙŠ", "North Facing", 125 * 14000),
-                "C": (120, "Ù‚Ø¨Ù„ÙŠ", "South Facing", 120 * 13000),
+                "A": (137, "بحري قبلي", "North/South Facing", 137 * 13500),
+                "B": (125, "بحري", "North Facing", 125 * 14000),
+                "C": (120, "قبلي", "South Facing", 120 * 13000),
             }
             for floor in range(1, 8):
                 for apt_type, (area, direction_ar, direction_en, base_price) in specs.items():
@@ -688,9 +730,18 @@ def current_admin() -> dict[str, Any] | None:
 def require_admin(roles: set[str] | None = None) -> dict[str, Any] | Response:
     admin = current_admin()
     if not admin:
-        return jsonify({"error": "unauthorized", "message": "ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ø£ÙˆÙ„Ø§Ù‹."}), 401
+        return jsonify({"error": "unauthorized", "message": "يجب تسجيل الدخول أولاً."}), 401
+    password_change_allowed = {
+        "/api/admin/me",
+        "/api/admin/logout",
+        "/api/admin/profile",
+        "/api/admin/change-password",
+        "/api/admin/account",
+    }
+    if admin.get("must_change_password") and request.path not in password_change_allowed:
+        return jsonify({"error": "password_change_required", "message": "يجب تغيير كلمة المرور قبل استخدام النظام."}), 403
     if roles and admin["role"] not in roles:
-        return jsonify({"error": "forbidden", "message": "Ù„ÙŠØ³ Ù„Ø¯ÙŠÙƒ ØµÙ„Ø§Ø­ÙŠØ© Ù„ØªÙ†ÙÙŠØ° Ù‡Ø°Ù‡ Ø§Ù„Ø¹Ù…Ù„ÙŠØ©."}), 403
+        return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
     return admin
 
 
@@ -700,8 +751,43 @@ def admin_public_payload(row: dict[str, Any] | dict[str, Any]) -> dict[str, Any]
         "fullName": normalize_display_text(row["full_name"]),
         "email": normalize_display_text(row["email"]),
         "role": row["role"],
-        "createdAt": row["created_at"],
+        "phone": normalize_display_text(row.get("phone") or ""),
+        "isActive": bool(row.get("is_active", True)),
+        "mustChangePassword": bool(row.get("must_change_password", False)),
+        "lastLoginAt": row.get("last_login_at"),
+        "createdAt": row.get("created_at"),
     }
+
+
+def is_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def can_manage_users(admin: dict[str, Any]) -> bool:
+    return admin["role"] in {"owner", "admin"}
+
+
+def owner_count(conn: Any) -> int:
+    return conn.execute("SELECT COUNT(*) FROM admins WHERE role = 'owner'").fetchone()[0]
+
+
+def protected_account_response() -> Response:
+    return jsonify({"error": "protected_account", "message": "لا يمكن إيقاف هذا الحساب."}), 403
+
+
+def ensure_user_manageable(admin: dict[str, Any], target: dict[str, Any], *, action: str) -> Response | None:
+    if not can_manage_users(admin):
+        return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
+    if action == "disable":
+        if target["id"] == admin["id"] or target["role"] == "owner":
+            return protected_account_response()
+    if action in {"update", "reset_password"} and target["role"] == "owner" and admin["role"] != "owner":
+        return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
+    if action == "reset_password" and target["role"] == "owner":
+        return jsonify({"error": "protected_account", "message": "لا يمكن إعادة تعيين كلمة مرور هذا الحساب."}), 403
+    return None
 
 
 def audit(conn: Any, admin_id: str | None, action_type: str, entity_type: str, entity_id: str | None, description: str, old_value: Any = None, new_value: Any = None) -> None:
@@ -773,14 +859,28 @@ def recalc_client(conn: Any, client_id: str) -> None:
         payment_status = "fully_paid"
     else:
         payment_status = "partially_paid"
-    conn.execute(
-        """
-        UPDATE clients
-        SET paid_amount = ?, remaining_amount = ?, payment_status = ?, updated_at = ?
-        WHERE id = ?
-        """,
-        (paid, remaining, payment_status, now_iso(), client_id),
-    )
+    paid_amount = float(paid or 0)
+    next_reservation_status = None
+    if client["reservation_status"] != "cancelled":
+        next_reservation_status = "sold" if paid_amount >= SOLD_PAYMENT_THRESHOLD or (total > 0 and paid_amount >= total) else "reserved"
+    if next_reservation_status:
+        conn.execute(
+            """
+            UPDATE clients
+            SET paid_amount = ?, remaining_amount = ?, payment_status = ?, reservation_status = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (paid, remaining, payment_status, next_reservation_status, now_iso(), client_id),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE clients
+            SET paid_amount = ?, remaining_amount = ?, payment_status = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (paid, remaining, payment_status, now_iso(), client_id),
+        )
     sync_apartment_for_client(conn, client_id)
 
 
@@ -792,10 +892,9 @@ def sync_apartment_for_client(conn: Any, client_id: str) -> None:
     assigned_client_id = None
     if client["reservation_status"] != "cancelled":
         assigned_client_id = client["id"]
-        if client["reservation_status"] == "sold" or client["payment_status"] == "fully_paid":
+        paid_amount = float(client["paid_amount"] or 0)
+        if paid_amount >= SOLD_PAYMENT_THRESHOLD or client["payment_status"] == "fully_paid":
             apartment_status = "sold"
-        elif client["payment_status"] in {"pending", "overdue"}:
-            apartment_status = "pending_payment"
         else:
             apartment_status = "reserved"
     conn.execute(
@@ -896,12 +995,12 @@ def consolidate_client_portfolios(conn: Any) -> None:
 def validate_assignment(conn: Any, apartment_id: str, client_id: str | None = None) -> tuple[bool, str | None]:
     apartment = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
     if not apartment:
-        return False, "Ø§Ù„Ø´Ù‚Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©."
+        return False, "الشقة غير موجودة."
     if apartment["status"] in {"sold", "reserved", "pending_approval", "frozen"} and apartment["assigned_client_id"] != client_id:
-        return False, "Ù‡Ø°Ù‡ Ø§Ù„Ø´Ù‚Ø© ØºÙŠØ± Ù…ØªØ§Ø­Ø© Ù„Ù„Ø­Ø¬Ø² Ø£Ùˆ Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø¥Ø¬Ø±Ø§Ø¡ Ø¢Ø®Ø±."
+        return False, "هذه الشقة غير متاحة للحجز أو بانتظار إجراء آخر."
     other = active_client_for_apartment(conn, apartment_id, exclude_client_id=client_id)
     if other:
-        return False, "Ù‡Ø°Ù‡ Ø§Ù„Ø´Ù‚Ø© Ù…Ø­Ø¬ÙˆØ²Ø© Ø¨Ø§Ù„ÙØ¹Ù„ Ù„Ø¹Ù…ÙŠÙ„ Ø¢Ø®Ø±."
+        return False, "هذه الشقة محجوزة بالفعل لعميل آخر."
     return True, None
 
 
@@ -1022,7 +1121,7 @@ def apartment_payload(row: dict[str, Any] | dict[str, Any]) -> dict[str, Any]:
         "price": row["price"],
         "status": status_title(row["status"]),
         "assignedClientId": row["assigned_client_id"],
-        "buildingName": "Ù…Ø´Ø±ÙˆØ¹ Ø£Ø±Ø¶ Ø¹Ø¨Ø¯Ø§Ù„Ø¬Ù„ÙŠÙ„",
+        "buildingName": "مشروع أرض عبدالجليل",
         "location": get_setting("office_address"),
         "notes": normalize_display_text(row["notes"]),
         "features": apartment_features(row["apartment_type"]),
@@ -1074,6 +1173,10 @@ def deal_payload(conn: Any, row: dict[str, Any]) -> dict[str, Any]:
     apartment = conn.execute("SELECT * FROM apartments WHERE id = ?", (row["apartment_id"],)).fetchone() if row["apartment_id"] else None
     assistant = conn.execute("SELECT id, full_name, email, role, created_at FROM admins WHERE id = ?", (row["assistant_id"],)).fetchone()
     contracts = conn.execute("SELECT * FROM contracts WHERE deal_id = ? ORDER BY created_at DESC", (row["id"],)).fetchall()
+    client = conn.execute(
+        "SELECT client_code, portfolio_code FROM clients WHERE id = ?",
+        (row["client_id"],),
+    ).fetchone() if "client_id" in columns and row["client_id"] else None
     proposed_total = float(row["proposed_total"] or 0)
     down_payment = float(row["down_payment"] or 0) if "down_payment" in columns else 0
     return {
@@ -1081,6 +1184,8 @@ def deal_payload(conn: Any, row: dict[str, Any]) -> dict[str, Any]:
         "assistantId": row["assistant_id"],
         "assistant": admin_public_payload(assistant) if assistant else None,
         "clientId": row["client_id"] if "client_id" in columns else None,
+        "reservationCode": normalize_display_text(client["client_code"]) if client else None,
+        "portfolioCode": normalize_display_text(client["portfolio_code"] or client["client_code"]) if client else None,
         "clientName": row["client_name"],
         "clientPhone": row["client_phone"],
         "apartmentId": row["apartment_id"],
@@ -1206,16 +1311,16 @@ def owner_alerts_payload(conn: Any) -> list[dict[str, Any]]:
     summary = owner_dashboard_summary_payload(conn)
     alerts: list[dict[str, Any]] = []
     if summary["pendingDeals"]:
-        alerts.append({"type": "deal", "severity": "warning", "count": summary["pendingDeals"], "message": "ÙŠÙˆØ¬Ø¯ Ø¯ÙŠÙ„ Ø¬Ø¯ÙŠØ¯ Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø§Ù„Ù…ÙˆØ§ÙÙ‚Ø©."})
+        alerts.append({"type": "deal", "severity": "warning", "count": summary["pendingDeals"], "message": "يوجد ديل جديد بانتظار الموافقة."})
     if summary["overdueInstallments"]:
-        alerts.append({"type": "installment", "severity": "danger", "count": summary["overdueInstallments"], "message": "ÙŠÙˆØ¬Ø¯ Ù‚Ø³Ø· Ù…ØªØ£Ø®Ø± Ø§Ù„Ø³Ø¯Ø§Ø¯."})
+        alerts.append({"type": "installment", "severity": "danger", "count": summary["overdueInstallments"], "message": "يوجد قسط متأخر السداد."})
     if summary["pendingPayments"]:
-        alerts.append({"type": "payment", "severity": "warning", "count": summary["pendingPayments"], "message": "ØªÙˆØ¬Ø¯ Ø¯ÙØ¹Ø© Ù‚ÙŠØ¯ Ø§Ù„Ù…Ø±Ø§Ø¬Ø¹Ø©."})
+        alerts.append({"type": "payment", "severity": "warning", "count": summary["pendingPayments"], "message": "توجد دفعة قيد المراجعة."})
     pending_units = conn.execute("SELECT COUNT(*) FROM apartments WHERE status = 'pending_approval'").fetchone()[0]
     if pending_units:
-        alerts.append({"type": "apartment", "severity": "info", "count": pending_units, "message": "ØªÙˆØ¬Ø¯ Ø´Ù‚Ø© Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ù…ÙˆØ§ÙÙ‚Ø© Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©."})
+        alerts.append({"type": "apartment", "severity": "info", "count": pending_units, "message": "توجد شقة بانتظار موافقة الإدارة."})
     if summary["revisionDeals"]:
-        alerts.append({"type": "revision", "severity": "info", "count": summary["revisionDeals"], "message": "ÙŠÙˆØ¬Ø¯ Ø¯ÙŠÙ„ Ù…Ø·Ù„ÙˆØ¨ ØªØ¹Ø¯ÙŠÙ„Ù‡ Ù…Ù† Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯."})
+        alerts.append({"type": "revision", "severity": "info", "count": summary["revisionDeals"], "message": "يوجد ديل مطلوب تعديله من المساعد."})
     return alerts
 
 
@@ -1258,7 +1363,7 @@ def deal_risk_review(conn: Any, row: dict[str, Any]) -> list[dict[str, str]]:
         minimum_key = f"min_price_{apartment['area']}"
         minimum_price = float(price_settings.get(minimum_key) or 0)
         if minimum_price and proposed_total < minimum_price:
-            risks.append({"severity": "danger", "message": "Ø§Ù„Ø³Ø¹Ø± Ø£Ù‚Ù„ Ù…Ù† Ø§Ù„Ø­Ø¯ Ø§Ù„Ø£Ø¯Ù†Ù‰ Ø§Ù„Ù…Ø­Ø¯Ø¯."})
+            risks.append({"severity": "danger", "message": "السعر أقل من الحد الأدنى المحدد."})
         duplicate_pending = conn.execute(
             """
             SELECT COUNT(*) FROM deals
@@ -1267,14 +1372,14 @@ def deal_risk_review(conn: Any, row: dict[str, Any]) -> list[dict[str, str]]:
             (apartment["id"], row["id"]),
         ).fetchone()[0]
         if duplicate_pending:
-            risks.append({"severity": "warning", "message": "Ø§Ù„Ø´Ù‚Ø© Ø¹Ù„ÙŠÙ‡Ø§ Ø¯ÙŠÙ„ Ø¢Ø®Ø± Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø§Ù„Ù…ÙˆØ§ÙÙ‚Ø© Ø£Ùˆ Ù…Ø¹ØªÙ…Ø¯."})
+            risks.append({"severity": "warning", "message": "الشقة عليها ديل آخر بانتظار الموافقة أو معتمد."})
     minimum_down_percent = float(price_settings.get("minimum_down_payment_percent") or 0)
     if minimum_down_percent and proposed_total > 0 and down_payment < (proposed_total * minimum_down_percent / 100):
-        risks.append({"severity": "warning", "message": "Ø§Ù„Ù…Ù‚Ø¯Ù… Ø£Ù‚Ù„ Ù…Ù† Ø§Ù„Ù†Ø³Ø¨Ø© Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø©."})
+        risks.append({"severity": "warning", "message": "المقدم أقل من النسبة المطلوبة."})
     if proposed_total > 0 and (proposed_total - down_payment) / proposed_total >= 0.75:
-        risks.append({"severity": "info", "message": "ÙŠÙˆØ¬Ø¯ Ù…Ø¨Ù„Øº ÙƒØ¨ÙŠØ± Ù…ØªØ¨Ù‚ÙŠ."})
+        risks.append({"severity": "info", "message": "يوجد مبلغ كبير متبقي."})
     if not row["notes"]:
-        risks.append({"severity": "info", "message": "Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ù„Ø§Ø­Ø¸Ø§Øª ØªÙˆØ¶Ø­ ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø¯ÙŠÙ„."})
+        risks.append({"severity": "info", "message": "لا توجد ملاحظات توضح تفاصيل الديل."})
     return risks
 
 
@@ -1295,7 +1400,7 @@ def activate_client_for_deal(conn: Any, deal: dict[str, Any], admin_id: str) -> 
     existing_client_id = deal["client_id"] if "client_id" in set(deal.keys()) else None
     active_client = active_client_for_apartment(conn, apartment["id"], exclude_client_id=existing_client_id)
     if active_client:
-        raise ValueError("Ù‡Ø°Ù‡ Ø§Ù„Ø´Ù‚Ø© Ù…Ø­Ø¬ÙˆØ²Ø© Ø¨Ø§Ù„ÙØ¹Ù„ Ù„Ø¹Ù…ÙŠÙ„ Ø¢Ø®Ø±.")
+        raise ValueError("هذه الشقة محجوزة بالفعل لعميل آخر.")
     client_id = existing_client_id
     if not client_id:
         client_id = public_id("client")
@@ -1318,7 +1423,7 @@ def activate_client_for_deal(conn: Any, deal: dict[str, Any], admin_id: str) -> 
                 datetime.now().date().isoformat(),
                 float(deal["proposed_total"] or apartment["price"] or 0),
                 float(deal["proposed_total"] or apartment["price"] or 0),
-                "ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ù…Ù„Ù Ø§Ù„Ø¹Ù…ÙŠÙ„ ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§ Ø¨Ø¹Ø¯ Ù…ÙˆØ§ÙÙ‚Ø© Ø§Ù„Ù…Ø§Ù„Ùƒ Ø¹Ù„Ù‰ Ø§Ù„Ø¯ÙŠÙ„.",
+                "تم إنشاء ملف العميل تلقائيًا بعد موافقة المالك على الديل.",
                 now_iso(),
                 now_iso(),
             ),
@@ -1346,13 +1451,16 @@ def activate_client_for_deal(conn: Any, deal: dict[str, Any], admin_id: str) -> 
         "UPDATE apartments SET status = 'reserved', assigned_client_id = ?, updated_at = ? WHERE id = ?",
         (client_id, now_iso(), apartment["id"]),
     )
-    audit(conn, admin_id, "activate", "client", client_id, f"ØªÙ… ØªÙØ¹ÙŠÙ„ ÙƒÙˆØ¯ Ø§Ù„Ø­Ø¬Ø² Ù„Ù„Ø¹Ù…ÙŠÙ„ {deal['client_name']}")
+    audit(conn, admin_id, "activate", "client", client_id, f"تم تفعيل كود الحجز للعميل {deal['client_name']}")
     return client_id
 
 
-def release_apartment_for_deal(conn: Any, deal: dict[str, Any]) -> None:
+def release_apartment_for_deal(conn: Any, deal: dict[str, Any], admin_id: str | None = None) -> bool:
     if not deal["apartment_id"]:
-        return
+        return False
+    apartment = conn.execute("SELECT status FROM apartments WHERE id = ?", (deal["apartment_id"],)).fetchone()
+    if apartment and apartment["status"] == "sold":
+        return False
     active_client = active_client_for_apartment(conn, deal["apartment_id"], exclude_client_id=deal["client_id"] if "client_id" in set(deal.keys()) else None)
     active_deal = conn.execute(
         """
@@ -1364,6 +1472,37 @@ def release_apartment_for_deal(conn: Any, deal: dict[str, Any]) -> None:
     ).fetchone()
     if not active_client and not active_deal:
         conn.execute("UPDATE apartments SET status = 'available', assigned_client_id = NULL, updated_at = ? WHERE id = ?", (now_iso(), deal["apartment_id"]))
+        if admin_id:
+            audit(conn, admin_id, "release_apartment", "apartment", deal["apartment_id"], "تم تحرير الشقة بعد إلغاء الديل", {"deal_id": deal["id"]}, {"status": "available"})
+        return True
+    return False
+
+
+def deal_has_payments(conn: Any, deal: dict[str, Any]) -> bool:
+    client_id = deal["client_id"] if "client_id" in set(deal.keys()) else None
+    if client_id and conn.execute("SELECT id FROM payments WHERE client_id = ? LIMIT 1", (client_id,)).fetchone():
+        return True
+    if deal["apartment_id"] and conn.execute("SELECT id FROM payments WHERE apartment_id = ? LIMIT 1", (deal["apartment_id"],)).fetchone():
+        return True
+    return False
+
+
+def client_has_payments(conn: Any, client_id: str) -> bool:
+    return bool(conn.execute("SELECT id FROM payments WHERE client_id = ? LIMIT 1", (client_id,)).fetchone())
+
+
+def client_has_deals(conn: Any, client_id: str) -> bool:
+    return bool(conn.execute("SELECT id FROM deals WHERE client_id = ? LIMIT 1", (client_id,)).fetchone())
+
+
+def verify_admin_confirmation_password(admin: dict[str, Any], password: str) -> bool:
+    if not password:
+        return False
+    with db() as conn:
+        row = conn.execute("SELECT password_hash, password_salt FROM admins WHERE id = ?", (admin["id"],)).fetchone()
+        if not row:
+            return False
+        return verify_password(password, row["password_hash"], row["password_salt"])
 
 
 def get_setting(key: str) -> str:
@@ -1474,17 +1613,32 @@ def rate_limited(ip: str) -> bool:
 
 
 def login_rate_limited(identifier: str) -> bool:
-    """Check if login attempts exceed rate limit. identifier = email or IP."""
+    """Check recent failed login attempts without counting the current request."""
+    now = time.time()
+    attempts = [ts for ts in login_attempts.get(identifier, []) if now - ts < LOGIN_RATE_LIMIT_SECONDS]
+    login_attempts[identifier] = attempts
+    return len(attempts) >= LOGIN_RATE_LIMIT_ATTEMPTS
+
+
+def record_login_failure(identifier: str) -> None:
     now = time.time()
     attempts = [ts for ts in login_attempts.get(identifier, []) if now - ts < LOGIN_RATE_LIMIT_SECONDS]
     attempts.append(now)
     login_attempts[identifier] = attempts
-    return len(attempts) > LOGIN_RATE_LIMIT_ATTEMPTS
+
+
+def clear_login_failures(identifier: str) -> None:
+    login_attempts.pop(identifier, None)
 
 
 @app.get("/")
 def index() -> Response:
     return send_file(INDEX_PATH)
+
+
+@app.get("/favicon.ico")
+def favicon() -> Response:
+    return send_from_directory(BASE_DIR / "static", "favicon.ico", mimetype="image/vnd.microsoft.icon")
 
 
 @app.get("/generated/<path:filename>")
@@ -1537,15 +1691,15 @@ def client_reservation(code: str) -> Response:
 @app.post("/api/client/verify-code")
 def verify_client_code() -> Response:
     if rate_limited(request.remote_addr or "unknown"):
-        return jsonify({"error": "rate_limited", "message": "ÙŠØ±Ø¬Ù‰ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù„Ø§Ø­Ù‚Ù‹Ø§."}), 429
+        return jsonify({"error": "rate_limited", "message": "يرجى المحاولة لاحقًا."}), 429
     payload = request.get_json(silent=True) or {}
     code = normalize_code(payload.get("code", ""))
     if not code:
-        return jsonify({"error": "invalid_code", "message": "Ù„Ù… Ù†ØªÙ…ÙƒÙ† Ù…Ù† Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† ÙƒÙˆØ¯ Ø§Ù„Ø­Ø¬Ø². ÙŠØ±Ø¬Ù‰ Ø§Ù„ØªØ£ÙƒØ¯ Ù…Ù† Ø§Ù„ÙƒÙˆØ¯ ÙˆØ§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù…Ø±Ø© Ø£Ø®Ø±Ù‰ Ø£Ùˆ Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ù…ÙƒØªØ¨."}), 400
+        return jsonify({"error": "invalid_code", "message": "لم نتمكن من التحقق من كود الحجز. يرجى التأكد من الكود والمحاولة مرة أخرى أو التواصل مع المكتب."}), 400
     with db() as conn:
         rows = rows_for_portfolio_code(conn, code)
         if not rows:
-            return jsonify({"error": "invalid_code", "message": "Ù„Ù… Ù†ØªÙ…ÙƒÙ† Ù…Ù† Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† ÙƒÙˆØ¯ Ø§Ù„Ø­Ø¬Ø². ÙŠØ±Ø¬Ù‰ Ø§Ù„ØªØ£ÙƒØ¯ Ù…Ù† Ø§Ù„ÙƒÙˆØ¯ ÙˆØ§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ù…Ø±Ø© Ø£Ø®Ø±Ù‰ Ø£Ùˆ Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ù…ÙƒØªØ¨."}), 404
+            return jsonify({"error": "invalid_code", "message": "لم نتمكن من التحقق من كود الحجز. يرجى التأكد من الكود والمحاولة مرة أخرى أو التواصل مع المكتب."}), 404
         for row in rows:
             recalc_client(conn, row["id"])
         refreshed_rows = rows_for_portfolio_code(conn, code)
@@ -1568,16 +1722,16 @@ def admin_login() -> Response:
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
     ip = request.remote_addr or "unknown"
-    
-    # Check rate limiting using email as primary identifier
-    if login_rate_limited(email):
-        return jsonify({"error": "rate_limited", "message": "عدد محاولات تسجيل الدخول كبير. يرجى المحاولة لاحقًا."}), 429
+    login_identifier = email or ip
     
     with db() as conn:
         admin = conn.execute("SELECT * FROM admins WHERE lower(email) = ?", (email,)).fetchone()
         
         # Failed login - invalid credentials
         if not admin or not verify_password(password, admin["password_hash"], admin["password_salt"]):
+            if login_rate_limited(login_identifier):
+                return jsonify({"error": "rate_limited", "message": "عدد محاولات تسجيل الدخول كبير. يرجى المحاولة لاحقًا."}), 429
+            record_login_failure(login_identifier)
             audit(conn, None, "login_failed", "admin", None, f"محاولة دخول فاشلة من {ip} بريد: {email}")
             return jsonify({"error": "invalid_login", "message": "بيانات تسجيل الدخول غير صحيحة."}), 401
         
@@ -1599,20 +1753,14 @@ def admin_login() -> Response:
             "UPDATE admins SET last_login_at = ? WHERE id = ?",
             (now_iso(), admin["id"]),
         )
+        clear_login_failures(login_identifier)
         
         audit(conn, admin["id"], "login_success", "admin", admin["id"], f"تم تسجيل دخول الإدارة من {ip}")
         
-        response_payload = {
-            "admin": {
-                "id": admin["id"],
-                "fullName": admin["full_name"],
-                "email": admin["email"],
-                "role": admin["role"],
-            }
-        }
+        response_payload = {"admin": admin_public_payload(admin)}
         
         # Add must_change_password flag if needed
-        if admin["must_change_password"]:
+        if admin.get("must_change_password"):
             response_payload["must_change_password"] = True
         
         response = jsonify(response_payload)
@@ -1643,7 +1791,7 @@ def admin_me() -> Response:
     admin = current_admin()
     if not admin:
         return jsonify({"admin": None}), 401
-    return jsonify({"admin": {"id": admin["id"], "fullName": admin["full_name"], "email": admin["email"], "role": admin["role"]}})
+    return jsonify({"admin": admin_public_payload(admin)})
 
 
 @app.get("/api/admin/bootstrap")
@@ -1679,7 +1827,13 @@ def admin_bootstrap() -> Response:
             contracts = []
         else:
             deal_rows = conn.execute("SELECT * FROM deals ORDER BY created_at DESC").fetchall()
-            users = [admin_public_payload(row) for row in conn.execute("SELECT id, full_name, email, role, created_at FROM admins ORDER BY created_at DESC").fetchall()]
+            user_filter = "" if admin["role"] == "owner" else "WHERE role != 'owner'"
+            users = [
+                admin_public_payload(row)
+                for row in conn.execute(
+                    f"SELECT id, full_name, email, role, phone, is_active, must_change_password, last_login_at, created_at FROM admins {user_filter} ORDER BY created_at DESC"
+                ).fetchall()
+            ]
             contracts = [contract_payload(row) for row in conn.execute("SELECT * FROM contracts ORDER BY created_at DESC").fetchall()]
         deals = [deal_payload(conn, row) for row in deal_rows]
         pending_payments = conn.execute("SELECT COUNT(*) FROM payments WHERE payment_status = 'pending'").fetchone()[0]
@@ -1817,9 +1971,9 @@ def add_client() -> Response:
     name = (payload.get("full_name") or payload.get("name") or "").strip()
     apartment_id = payload.get("apartment_id") or payload.get("apartmentId")
     if not name:
-        return jsonify({"error": "validation", "message": "Ù‡Ø°Ø§ Ø§Ù„Ø­Ù‚Ù„ Ù…Ø·Ù„ÙˆØ¨."}), 400
+        return jsonify({"error": "validation", "message": "هذا الحقل مطلوب."}), 400
     if not apartment_id:
-        return jsonify({"error": "validation", "message": "ÙŠØ¬Ø¨ Ø§Ø®ØªÙŠØ§Ø± Ø´Ù‚Ø©."}), 400
+        return jsonify({"error": "validation", "message": "يجب اختيار شقة."}), 400
     with db() as conn:
         ok, message = validate_assignment(conn, apartment_id)
         if not ok:
@@ -1875,7 +2029,7 @@ def add_client() -> Response:
             ),
         )
         recalc_client(conn, client_id)
-        audit(conn, admin["id"], "create", "client", client_id, f"ØªÙ… Ø¥Ø¶Ø§ÙØ© Ø¹Ù…ÙŠÙ„ Ø¬Ø¯ÙŠØ¯: {name}", None, payload)
+        audit(conn, admin["id"], "create", "client", client_id, f"تم إضافة عميل جديد: {name}", None, payload)
         row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         return jsonify({"client": client_payload(conn, row)})
 
@@ -1889,7 +2043,7 @@ def update_client(client_id: str) -> Response:
     with db() as conn:
         old = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¹Ù…ÙŠÙ„ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
         apartment_id = payload.get("apartment_id") or payload.get("apartmentId") or old["apartment_id"]
         ok, message = validate_assignment(conn, apartment_id, client_id=client_id)
         if not ok:
@@ -1923,7 +2077,7 @@ def update_client(client_id: str) -> Response:
             conn.execute("UPDATE apartments SET status = 'available', assigned_client_id = NULL, updated_at = ? WHERE id = ?", (now_iso(), old["apartment_id"]))
         recalc_client(conn, client_id)
         row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
-        audit(conn, admin["id"], "update", "client", client_id, "ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¹Ù…ÙŠÙ„", dict(old), payload)
+        audit(conn, admin["id"], "update", "client", client_id, "تم تعديل بيانات العميل", dict(old), payload)
         return jsonify({"client": client_payload(conn, row)})
 
 
@@ -1933,13 +2087,17 @@ def delete_client(client_id: str) -> Response:
     if not isinstance(admin, dict):
         return admin
     if request.args.get("confirm") != "true":
-        return jsonify({"error": "confirmation_required", "message": "Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø­Ø°Ù Ø§Ù„Ø¹Ù…ÙŠÙ„ Ø¨Ø¯ÙˆÙ† ØªØ£ÙƒÙŠØ¯."}), 409
+        return jsonify({"error": "confirmation_required", "message": "لا يمكن حذف العميل بدون تأكيد."}), 409
     with db() as conn:
         old = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¹Ù…ÙŠÙ„ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
+        if client_has_payments(conn, client_id):
+            return jsonify({"error": "validation", "message": "لا يمكن حذف عميل مرتبط بمدفوعات. يمكن إلغاء الحجز فقط مع الاحتفاظ بالسجل."}), 409
+        if client_has_deals(conn, client_id):
+            return jsonify({"error": "validation", "message": "لا يمكن حذف عميل مرتبط بديل. يمكن إلغاء الحجز فقط مع الاحتفاظ بالسجل."}), 409
         apartment_id = old["apartment_id"]
-        audit(conn, admin["id"], "delete", "client", client_id, f"ØªÙ… Ø­Ø°Ù Ø§Ù„Ø¹Ù…ÙŠÙ„: {old['full_name']}", dict(old), None)
+        audit(conn, admin["id"], "delete", "client", client_id, f"تم حذف العميل: {old['full_name']}", dict(old), None)
         conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
         if apartment_id:
             conn.execute(
@@ -1960,13 +2118,17 @@ def delete_client_via_post(client_id: str) -> Response:
         return admin
     payload = request.get_json(silent=True) or {}
     if payload.get("confirm") is not True:
-        return jsonify({"error": "confirmation_required", "message": "Ã™â€žÃ˜Â§ Ã™Å Ã™â€¦Ã™Æ’Ã™â€  Ã˜Â­Ã˜Â°Ã™Â Ã˜Â§Ã™â€žÃ˜Â¹Ã™â€¦Ã™Å Ã™â€ž Ã˜Â¨Ã˜Â¯Ã™Ë†Ã™â€  Ã˜ÂªÃ˜Â£Ã™Æ’Ã™Å Ã˜Â¯."}), 409
+        return jsonify({"error": "confirmation_required", "message": "لا يمكن حذف العميل بدون تأكيد."}), 409
     with db() as conn:
         old = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ã˜Â§Ã™â€žÃ˜Â¹Ã™â€¦Ã™Å Ã™â€ž Ã˜ÂºÃ™Å Ã˜Â± Ã™â€¦Ã™Ë†Ã˜Â¬Ã™Ë†Ã˜Â¯."}), 404
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
+        if client_has_payments(conn, client_id):
+            return jsonify({"error": "validation", "message": "لا يمكن حذف عميل مرتبط بمدفوعات. يمكن إلغاء الحجز فقط مع الاحتفاظ بالسجل."}), 409
+        if client_has_deals(conn, client_id):
+            return jsonify({"error": "validation", "message": "لا يمكن حذف عميل مرتبط بديل. يمكن إلغاء الحجز فقط مع الاحتفاظ بالسجل."}), 409
         apartment_id = old["apartment_id"]
-        audit(conn, admin["id"], "delete", "client", client_id, f"Ã˜ÂªÃ™â€¦ Ã˜Â­Ã˜Â°Ã™Â Ã˜Â§Ã™â€žÃ˜Â¹Ã™â€¦Ã™Å Ã™â€ž: {old['full_name']}", dict(old), None)
+        audit(conn, admin["id"], "delete", "client", client_id, f"تم حذف العميل: {old['full_name']}", dict(old), None)
         conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
         if apartment_id:
             conn.execute(
@@ -1994,7 +2156,7 @@ def assign_apartment() -> Response:
             return jsonify({"error": "assignment", "message": message}), 409
         old = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¹Ù…ÙŠÙ„ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
         apartment = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
         conn.execute(
             "UPDATE clients SET apartment_id = ?, total_amount = ?, updated_at = ? WHERE id = ?",
@@ -2003,7 +2165,7 @@ def assign_apartment() -> Response:
         if old["apartment_id"] and old["apartment_id"] != apartment_id:
             conn.execute("UPDATE apartments SET status = 'available', assigned_client_id = NULL, updated_at = ? WHERE id = ?", (now_iso(), old["apartment_id"]))
         recalc_client(conn, client_id)
-        audit(conn, admin["id"], "assign", "apartment", apartment_id, f"ØªÙ… ØªØ®ØµÙŠØµ Ø§Ù„Ø´Ù‚Ø© {apartment['unit_code']} Ù„Ù„Ø¹Ù…ÙŠÙ„", dict(old), payload)
+        audit(conn, admin["id"], "assign", "apartment", apartment_id, f"تم تخصيص الشقة {apartment['unit_code']} للعميل", dict(old), payload)
         return jsonify({"ok": True})
 
 
@@ -2016,16 +2178,16 @@ def update_apartment(apartment_id: str) -> Response:
     with db() as conn:
         old = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø´Ù‚Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©."}), 404
+            return jsonify({"error": "not_found", "message": "الشقة غير موجودة."}), 404
         status = status_db(payload.get("status") or old["status"], "apartment")
         active = active_client_for_apartment(conn, apartment_id)
         if status == "available" and active:
-            return jsonify({"error": "validation", "message": "Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¬Ø¹Ù„ Ø§Ù„Ø´Ù‚Ø© Ù…ØªØ§Ø­Ø© Ù‚Ø¨Ù„ Ø¥Ù„ØºØ§Ø¡ Ø£Ùˆ Ù†Ù‚Ù„ Ø§Ù„Ø­Ø¬Ø² Ø§Ù„Ù†Ø´Ø·."}), 409
+            return jsonify({"error": "validation", "message": "لا يمكن جعل الشقة متاحة قبل إلغاء أو نقل الحجز النشط."}), 409
         conn.execute(
             "UPDATE apartments SET price = ?, status = ?, notes = ?, updated_at = ? WHERE id = ?",
             (float(payload.get("price", old["price"])), status, payload.get("notes", old["notes"]), now_iso(), apartment_id),
         )
-        audit(conn, admin["id"], "update", "apartment", apartment_id, "ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø´Ù‚Ø©", dict(old), payload)
+        audit(conn, admin["id"], "update", "apartment", apartment_id, "تم تعديل بيانات الشقة", dict(old), payload)
         row = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
         return jsonify({"apartment": apartment_payload(row)})
 
@@ -2038,23 +2200,23 @@ def add_payment() -> Response:
     payload = request.get_json(silent=True) or {}
     amount = float(payload.get("amount") or 0)
     if amount <= 0:
-        return jsonify({"error": "validation", "message": "Ù‚ÙŠÙ…Ø© Ø§Ù„Ø¯ÙØ¹Ø© ÙŠØ¬Ø¨ Ø£Ù† ØªÙƒÙˆÙ† Ø£ÙƒØ¨Ø± Ù…Ù† ØµÙØ±."}), 400
+        return jsonify({"error": "validation", "message": "قيمة الدفعة يجب أن تكون أكبر من صفر."}), 400
     payment_date = payload.get("payment_date") or payload.get("date")
     if not payment_date:
-        return jsonify({"error": "validation", "message": "ØªØ§Ø±ÙŠØ® Ø§Ù„Ø¯ÙØ¹ Ù…Ø·Ù„ÙˆØ¨."}), 400
+        return jsonify({"error": "validation", "message": "تاريخ الدفع مطلوب."}), 400
     if not (payload.get("payment_method") or payload.get("method")):
         return jsonify({"error": "validation", "message": "طريقة الدفع مطلوبة."}), 400
     client_id = payload.get("client_id") or payload.get("clientId")
     with db() as conn:
         client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if not client:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¹Ù…ÙŠÙ„ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
         if amount > float(client["remaining_amount"] or client["total_amount"]) and not payload.get("allow_overpay"):
-            return jsonify({"error": "overpay", "message": "Ø§Ù„Ù…Ø¨Ù„Øº Ø§Ù„Ù…Ø¯Ø®Ù„ Ø£ÙƒØ¨Ø± Ù…Ù† Ø§Ù„Ù…Ø¨Ù„Øº Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ."}), 409
+            return jsonify({"error": "overpay", "message": "المبلغ المدخل أكبر من المبلغ المتبقي."}), 409
         payment_status = status_db(payload.get("payment_status") or payload.get("status") or "confirmed", "payment_record")
         receipt = payload.get("receipt_number") or (receipt_number(conn) if payment_status == "confirmed" else None)
         if receipt and conn.execute("SELECT id FROM payments WHERE receipt_number = ?", (receipt,)).fetchone():
-            return jsonify({"error": "duplicate_receipt", "message": "Ø±Ù‚Ù… Ø§Ù„Ø¥ÙŠØµØ§Ù„ Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ø§Ù„ÙØ¹Ù„."}), 409
+            return jsonify({"error": "duplicate_receipt", "message": "رقم الإيصال مستخدم بالفعل."}), 409
         payment_id = public_id("pay")
         conn.execute(
             """
@@ -2082,7 +2244,7 @@ def add_payment() -> Response:
         recalc_client(conn, client_id)
         if payment_status == "confirmed" and receipt:
             create_receipt_record(conn, payment_id, admin["id"])
-        audit(conn, admin["id"], "create", "payment", payment_id, f"ØªÙ… Ø¥Ø¶Ø§ÙØ© Ø¯ÙØ¹Ø© Ø¨Ù‚ÙŠÙ…Ø© {format_money(amount)}", None, payload)
+        audit(conn, admin["id"], "create", "payment", payment_id, f"تم إضافة دفعة بقيمة {format_money(amount)}", None, payload)
         row = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
         return jsonify({"payment": payment_payload(row)})
 
@@ -2106,10 +2268,10 @@ def update_payment(payment_id: str) -> Response:
     with db() as conn:
         old = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¯ÙØ¹Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©."}), 404
+            return jsonify({"error": "not_found", "message": "الدفعة غير موجودة."}), 404
         amount = float(payload.get("amount", old["amount"]))
         if amount <= 0:
-            return jsonify({"error": "validation", "message": "Ù‚ÙŠÙ…Ø© Ø§Ù„Ø¯ÙØ¹Ø© ÙŠØ¬Ø¨ Ø£Ù† ØªÙƒÙˆÙ† Ø£ÙƒØ¨Ø± Ù…Ù† ØµÙØ±."}), 400
+            return jsonify({"error": "validation", "message": "قيمة الدفعة يجب أن تكون أكبر من صفر."}), 400
         client = conn.execute("SELECT * FROM clients WHERE id = ?", (old["client_id"],)).fetchone()
         old_confirmed = float(old["amount"] or 0) if old["payment_status"] == "confirmed" else 0
         remaining_for_edit = float(client["remaining_amount"] or 0) + old_confirmed if client else amount
@@ -2120,7 +2282,7 @@ def update_payment(payment_id: str) -> Response:
         if receipt:
             duplicate = conn.execute("SELECT id FROM payments WHERE receipt_number = ? AND id != ?", (receipt, payment_id)).fetchone()
             if duplicate:
-                return jsonify({"error": "duplicate_receipt", "message": "Ø±Ù‚Ù… Ø§Ù„Ø¥ÙŠØµØ§Ù„ Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ø§Ù„ÙØ¹Ù„."}), 409
+                return jsonify({"error": "duplicate_receipt", "message": "رقم الإيصال مستخدم بالفعل."}), 409
         conn.execute(
             """
             UPDATE payments SET amount = ?, payment_date = ?, payment_method = ?, payment_status = ?,
@@ -2142,7 +2304,7 @@ def update_payment(payment_id: str) -> Response:
         recalc_client(conn, old["client_id"])
         if payment_status == "confirmed" and receipt:
             create_receipt_record(conn, payment_id, admin["id"])
-        audit(conn, admin["id"], "update", "payment", payment_id, "ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø¯ÙØ¹Ø©", dict(old), payload)
+        audit(conn, admin["id"], "update", "payment", payment_id, "تم تعديل دفعة", dict(old), payload)
         row = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
         return jsonify({"payment": payment_payload(row)})
 
@@ -2153,14 +2315,14 @@ def delete_payment(payment_id: str) -> Response:
     if not isinstance(admin, dict):
         return admin
     if request.args.get("confirm") != "true":
-        return jsonify({"error": "confirmation_required", "message": "Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø­Ø°Ù Ù‡Ø°Ù‡ Ø§Ù„Ø¯ÙØ¹Ø© Ø¨Ø¯ÙˆÙ† ØªØ£ÙƒÙŠØ¯."}), 409
+        return jsonify({"error": "confirmation_required", "message": "لا يمكن حذف هذه الدفعة بدون تأكيد."}), 409
     with db() as conn:
         old = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¯ÙØ¹Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©."}), 404
+            return jsonify({"error": "not_found", "message": "الدفعة غير موجودة."}), 404
         conn.execute("DELETE FROM payments WHERE id = ?", (payment_id,))
         recalc_client(conn, old["client_id"])
-        audit(conn, admin["id"], "delete", "payment", payment_id, "ØªÙ… Ø­Ø°Ù Ø¯ÙØ¹Ø©", dict(old), None)
+        audit(conn, admin["id"], "delete", "payment", payment_id, "تم حذف دفعة", dict(old), None)
         return jsonify({"ok": True})
 
 
@@ -2190,13 +2352,13 @@ def add_installment() -> Response:
     with db() as conn:
         client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if not client:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¹Ù…ÙŠÙ„ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
         due_date = payload.get("due_date") or payload.get("dueDate")
         if not due_date:
-            return jsonify({"error": "validation", "message": "ØªØ§Ø±ÙŠØ® Ø§Ù„Ø§Ø³ØªØ­Ù‚Ø§Ù‚ Ù…Ø·Ù„ÙˆØ¨."}), 400
+            return jsonify({"error": "validation", "message": "تاريخ الاستحقاق مطلوب."}), 400
         amount = float(payload.get("amount") or 0)
         if amount <= 0:
-            return jsonify({"error": "validation", "message": "Ù‚ÙŠÙ…Ø© Ø§Ù„Ù‚Ø³Ø· ØºÙŠØ± ØµØ­ÙŠØ­Ø©."}), 400
+            return jsonify({"error": "validation", "message": "قيمة القسط غير صحيحة."}), 400
         paid = float(payload.get("paid_amount") or 0)
         remaining = max(0, amount - paid)
         installment_id = public_id("inst")
@@ -2223,7 +2385,7 @@ def add_installment() -> Response:
             ),
         )
         recalc_client(conn, client_id)
-        audit(conn, admin["id"], "create", "installment", installment_id, "ØªÙ… Ø¥Ø¶Ø§ÙØ© Ù‚Ø³Ø·", None, payload)
+        audit(conn, admin["id"], "create", "installment", installment_id, "تم إضافة قسط", None, payload)
         row = conn.execute("SELECT * FROM installments WHERE id = ?", (installment_id,)).fetchone()
         return jsonify({"installment": installment_payload(row)})
 
@@ -2249,7 +2411,7 @@ def update_installment(installment_id: str) -> Response:
     with db() as conn:
         old = conn.execute("SELECT * FROM installments WHERE id = ?", (installment_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ù‚Ø³Ø· ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "القسط غير موجود."}), 404
         amount = float(payload.get("amount", old["amount"]))
         paid = float(payload.get("paid_amount", old["paid_amount"]))
         remaining = max(0, amount - paid)
@@ -2274,7 +2436,7 @@ def update_installment(installment_id: str) -> Response:
             ),
         )
         recalc_client(conn, old["client_id"])
-        audit(conn, admin["id"], "update", "installment", installment_id, "ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ù‚Ø³Ø·", dict(old), payload)
+        audit(conn, admin["id"], "update", "installment", installment_id, "تم تعديل قسط", dict(old), payload)
         row = conn.execute("SELECT * FROM installments WHERE id = ?", (installment_id,)).fetchone()
         return jsonify({"installment": installment_payload(row)})
 
@@ -2335,8 +2497,83 @@ def update_settings() -> Response:
                     "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                     (key, str(value), now_iso()),
                 )
-        audit(conn, admin["id"], "update", "settings", "settings", "ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ù†Ø¸Ø§Ù…", old, payload)
+        audit(conn, admin["id"], "update", "settings", "settings", "تم تعديل إعدادات النظام", old, payload)
         return jsonify({"settings": all_settings(conn)})
+
+
+@app.get("/api/admin/profile")
+def get_admin_profile() -> Response:
+    admin = require_admin()
+    if not isinstance(admin, dict):
+        return admin
+    return jsonify({"profile": admin_public_payload(admin)})
+
+
+@app.patch("/api/admin/profile")
+def update_admin_profile() -> Response:
+    admin = require_admin()
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    full_name = (payload.get("full_name") or payload.get("fullName") or "").strip()
+    email = (payload.get("email") or "").strip().lower()
+    phone = (payload.get("phone") or "").strip()
+
+    if not full_name or not email:
+        return jsonify({"error": "validation", "message": "يرجى إدخال الاسم والبريد الإلكتروني."}), 400
+
+    with db() as conn:
+        current_row = conn.execute("SELECT * FROM admins WHERE id = ?", (admin["id"],)).fetchone()
+        if not current_row:
+            return jsonify({"error": "not_found", "message": "المستخدم غير موجود."}), 404
+        duplicate = conn.execute("SELECT id FROM admins WHERE lower(email) = ? AND id != ?", (email, admin["id"])).fetchone()
+        if duplicate:
+            return jsonify({"error": "duplicate", "message": "البريد الإلكتروني مستخدم بالفعل."}), 409
+
+        conn.execute(
+            """
+            UPDATE admins
+            SET full_name = ?, email = ?, phone = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (full_name, email, phone, now_iso(), admin["id"]),
+        )
+        if email != current_row["email"]:
+            audit(conn, admin["id"], "change_email", "admin_account", admin["id"], "تم تغيير البريد الإلكتروني للمستخدم", {"email": current_row["email"]}, {"email": email})
+        audit(conn, admin["id"], "update", "admin_profile", admin["id"], "تم تحديث بيانات الملف الشخصي", dict(current_row), {"full_name": full_name, "email": email, "phone": phone})
+        updated = conn.execute("SELECT * FROM admins WHERE id = ?", (admin["id"],)).fetchone()
+        return jsonify({"profile": admin_public_payload(updated), "admin": admin_public_payload(updated)})
+
+
+@app.post("/api/admin/change-password")
+def change_admin_password() -> Response:
+    admin = require_admin()
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    current_password = payload.get("current_password") or payload.get("currentPassword") or ""
+    new_password = payload.get("new_password") or payload.get("newPassword") or ""
+    confirm_password = payload.get("confirm_password") or payload.get("confirmPassword") or ""
+    if not current_password or not new_password or not confirm_password:
+        return jsonify({"error": "validation", "message": "يرجى إدخال كلمة المرور الحالية والجديدة وتأكيدها."}), 400
+    if new_password != confirm_password:
+        return jsonify({"error": "validation", "message": "تأكيد كلمة المرور غير مطابق."}), 400
+    if len(new_password) < 8:
+        return jsonify({"error": "validation", "message": "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل."}), 400
+    with db() as conn:
+        current_row = conn.execute("SELECT * FROM admins WHERE id = ?", (admin["id"],)).fetchone()
+        if not current_row:
+            return jsonify({"error": "not_found", "message": "المستخدم غير موجود."}), 404
+        if not verify_password(current_password, current_row["password_hash"], current_row["password_salt"]):
+            return jsonify({"error": "validation", "message": "كلمة المرور الحالية غير صحيحة."}), 401
+        password_hash, salt = hash_password(new_password)
+        conn.execute(
+            "UPDATE admins SET password_hash = ?, password_salt = ?, must_change_password = FALSE, updated_at = ? WHERE id = ?",
+            (password_hash, salt, now_iso(), admin["id"]),
+        )
+        audit(conn, admin["id"], "change_password", "admin_account", admin["id"], "تم تغيير كلمة مرور المستخدم", None, {"password_changed": True})
+        updated = conn.execute("SELECT * FROM admins WHERE id = ?", (admin["id"],)).fetchone()
+        return jsonify({"admin": admin_public_payload(updated)})
 
 
 @app.patch("/api/admin/account")
@@ -2346,54 +2583,30 @@ def update_admin_account() -> Response:
         return admin
     payload = request.get_json(silent=True) or {}
     current_password = payload.get("current_password") or payload.get("currentPassword") or ""
-    new_email = (payload.get("new_email") or payload.get("newEmail") or "").strip().lower()
+    new_email = (payload.get("new_email") or payload.get("newEmail") or payload.get("email") or "").strip().lower()
     new_password = payload.get("new_password") or payload.get("newPassword") or ""
-
     if not current_password:
-        return jsonify({"error": "validation", "message": "ÙŠØ±Ø¬Ù‰ Ø¥Ø¯Ø®Ø§Ù„ ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± Ø§Ù„Ø­Ø§Ù„ÙŠØ©."}), 400
-    if not new_email and not new_password:
-        return jsonify({"error": "validation", "message": "ÙŠØ±Ø¬Ù‰ Ø¥Ø¯Ø®Ø§Ù„ Ø§Ù„Ø¨Ø±ÙŠØ¯ Ø§Ù„Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠ Ø§Ù„Ø¬Ø¯ÙŠØ¯ Ø£Ùˆ ÙƒÙ„Ù…Ø© Ù…Ø±ÙˆØ± Ø¬Ø¯ÙŠØ¯Ø©."}), 400
+        return jsonify({"error": "validation", "message": "يرجى إدخال كلمة المرور الحالية."}), 400
     if new_password and len(new_password) < 8:
-        return jsonify({"error": "validation", "message": "ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø© ÙŠØ¬Ø¨ Ø£Ù† ØªÙƒÙˆÙ† 8 Ø£Ø­Ø±Ù Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„."}), 400
-
+        return jsonify({"error": "validation", "message": "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل."}), 400
     with db() as conn:
         current_row = conn.execute("SELECT * FROM admins WHERE id = ?", (admin["id"],)).fetchone()
         if not current_row:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "المستخدم غير موجود."}), 404
         if not verify_password(current_password, current_row["password_hash"], current_row["password_salt"]):
-            return jsonify({"error": "validation", "message": "ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ± Ø§Ù„Ø­Ø§Ù„ÙŠØ© ØºÙŠØ± ØµØ­ÙŠØ­Ø©."}), 401
-
+            return jsonify({"error": "validation", "message": "كلمة المرور الحالية غير صحيحة."}), 401
         target_email = new_email or current_row["email"]
-        if target_email != current_row["email"]:
-            duplicate = conn.execute("SELECT id FROM admins WHERE lower(email) = ? AND id != ?", (target_email, admin["id"])).fetchone()
-            if duplicate:
-                return jsonify({"error": "duplicate", "message": "Ø§Ù„Ø¨Ø±ÙŠØ¯ Ø§Ù„Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠ Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ø§Ù„ÙØ¹Ù„."}), 409
-
-        if new_password:
-            password_hash, salt = hash_password(new_password)
-        else:
-            password_hash, salt = current_row["password_hash"], current_row["password_salt"]
-
+        duplicate = conn.execute("SELECT id FROM admins WHERE lower(email) = ? AND id != ?", (target_email, admin["id"])).fetchone()
+        if duplicate:
+            return jsonify({"error": "duplicate", "message": "البريد الإلكتروني مستخدم بالفعل."}), 409
+        password_hash, salt = hash_password(new_password) if new_password else (current_row["password_hash"], current_row["password_salt"])
         conn.execute(
-            """
-            UPDATE admins
-            SET email = ?, password_hash = ?, password_salt = ?, updated_at = ?
-            WHERE id = ?
-            """,
+            "UPDATE admins SET email = ?, password_hash = ?, password_salt = ?, must_change_password = FALSE, updated_at = ? WHERE id = ?",
             (target_email, password_hash, salt, now_iso(), admin["id"]),
         )
-        audit(
-            conn,
-            admin["id"],
-            "update",
-            "admin_account",
-            admin["id"],
-            "ØªÙ… ØªØ­Ø¯ÙŠØ« Ø¨ÙŠØ§Ù†Ø§Øª Ø¯Ø®ÙˆÙ„ Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©",
-            {"email": current_row["email"]},
-            {"email": target_email, "password_changed": bool(new_password)},
-        )
-        updated = conn.execute("SELECT id, full_name, email, role FROM admins WHERE id = ?", (admin["id"],)).fetchone()
-        return jsonify({"admin": {"id": updated["id"], "fullName": updated["full_name"], "email": updated["email"], "role": updated["role"]}})
+        audit(conn, admin["id"], "update", "admin_account", admin["id"], "تم تحديث بيانات دخول الإدارة", {"email": current_row["email"]}, {"email": target_email, "password_changed": bool(new_password)})
+        updated = conn.execute("SELECT * FROM admins WHERE id = ?", (admin["id"],)).fetchone()
+        return jsonify({"admin": admin_public_payload(updated)})
 
 
 @app.get("/api/admin/users")
@@ -2402,38 +2615,147 @@ def admin_users() -> Response:
     if not isinstance(admin, dict):
         return admin
     with db() as conn:
-        rows = conn.execute("SELECT id, full_name, email, role, created_at FROM admins ORDER BY created_at DESC").fetchall()
+        if admin["role"] == "owner":
+            rows = conn.execute("SELECT id, full_name, email, role, phone, is_active, must_change_password, last_login_at, created_at FROM admins ORDER BY created_at DESC").fetchall()
+        else:
+            rows = conn.execute("SELECT id, full_name, email, role, phone, is_active, must_change_password, last_login_at, created_at FROM admins WHERE role != 'owner' ORDER BY created_at DESC").fetchall()
         return jsonify({"users": [admin_public_payload(row) for row in rows]})
 
 
 @app.post("/api/admin/users")
 def create_admin_user() -> Response:
-    admin = require_admin({"owner"})
+    admin = require_admin({"owner", "admin"})
     if not isinstance(admin, dict):
         return admin
     payload = request.get_json(silent=True) or {}
     name = (payload.get("full_name") or payload.get("fullName") or "").strip()
     email = (payload.get("email") or "").strip().lower()
+    phone = (payload.get("phone") or "").strip()
     role = (payload.get("role") or "assistant").strip().lower()
     password = payload.get("password") or "Assistant@12345"
     if not name or not email:
-        return jsonify({"error": "validation", "message": "ÙŠØ±Ø¬Ù‰ Ù…Ø±Ø§Ø¬Ø¹Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø©."}), 400
+        return jsonify({"error": "validation", "message": "يرجى مراجعة البيانات المطلوبة."}), 400
     if role not in {"owner", "admin", "accountant", "viewer", "assistant"}:
-        return jsonify({"error": "validation", "message": "ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… ØºÙŠØ± ØµØ­ÙŠØ­Ø©."}), 400
+        return jsonify({"error": "validation", "message": "صلاحية المستخدم غير صحيحة."}), 400
+    if admin["role"] != "owner" and role in {"owner", "admin"}:
+        return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
     password_hash, salt = hash_password(password)
     user_id = public_id("admin")
     with db() as conn:
         if conn.execute("SELECT id FROM admins WHERE lower(email) = ?", (email,)).fetchone():
-            return jsonify({"error": "duplicate", "message": "Ø§Ù„Ø¨Ø±ÙŠØ¯ Ø§Ù„Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠ Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ø§Ù„ÙØ¹Ù„."}), 409
+            return jsonify({"error": "duplicate", "message": "البريد الإلكتروني مستخدم بالفعل."}), 409
         conn.execute(
             """
-            INSERT INTO admins (id, full_name, email, role, password_hash, password_salt, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO admins (id, full_name, email, phone, role, password_hash, password_salt, must_change_password, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
             """,
-            (user_id, name, email, role, password_hash, salt, now_iso(), now_iso()),
+            (user_id, name, email, phone, role, password_hash, salt, now_iso(), now_iso()),
         )
-        audit(conn, admin["id"], "create", "admin_user", user_id, f"ØªÙ… Ø¥Ø¶Ø§ÙØ© Ù…Ø³ØªØ®Ø¯Ù… Ø¬Ø¯ÙŠØ¯: {name}", None, {"email": email, "role": role})
-        row = conn.execute("SELECT id, full_name, email, role, created_at FROM admins WHERE id = ?", (user_id,)).fetchone()
+        audit(conn, admin["id"], "create", "admin_user", user_id, f"تم إضافة مستخدم جديد: {name}", None, {"email": email, "role": role, "phone": phone})
+        row = conn.execute("SELECT * FROM admins WHERE id = ?", (user_id,)).fetchone()
+        return jsonify({"user": admin_public_payload(row)})
+
+
+@app.patch("/api/admin/users/<user_id>")
+def update_admin_user(user_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    full_name = (payload.get("full_name") or payload.get("fullName") or "").strip()
+    email = (payload.get("email") or "").strip().lower()
+    phone = (payload.get("phone") or "").strip()
+    role = (payload.get("role") or "").strip().lower()
+    if not full_name or not email:
+        return jsonify({"error": "validation", "message": "يرجى إدخال الاسم والبريد الإلكتروني."}), 400
+    if role and role not in {"owner", "admin", "accountant", "viewer", "assistant"}:
+        return jsonify({"error": "validation", "message": "صلاحية المستخدم غير صحيحة."}), 400
+    with db() as conn:
+        old = conn.execute("SELECT * FROM admins WHERE id = ?", (user_id,)).fetchone()
+        if not old:
+            return jsonify({"error": "not_found", "message": "المستخدم غير موجود."}), 404
+        blocked = ensure_user_manageable(admin, old, action="update")
+        if blocked:
+            return blocked
+        if admin["role"] != "owner" and role in {"owner", "admin"}:
+            return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
+        if old["role"] == "owner" and role and role != "owner" and owner_count(conn) <= 1:
+            return jsonify({"error": "protected_account", "message": "لا يمكن تعديل آخر مالك في النظام."}), 403
+        duplicate = conn.execute("SELECT id FROM admins WHERE lower(email) = ? AND id != ?", (email, user_id)).fetchone()
+        if duplicate:
+            return jsonify({"error": "duplicate", "message": "البريد الإلكتروني مستخدم بالفعل."}), 409
+        target_role = role or old["role"]
+        conn.execute(
+            "UPDATE admins SET full_name = ?, email = ?, phone = ?, role = ?, updated_at = ? WHERE id = ?",
+            (full_name, email, phone, target_role, now_iso(), user_id),
+        )
+        audit(conn, admin["id"], "update", "admin_user", user_id, "تم تعديل بيانات حساب", dict(old), {"full_name": full_name, "email": email, "phone": phone, "role": target_role})
+        row = conn.execute("SELECT * FROM admins WHERE id = ?", (user_id,)).fetchone()
+        return jsonify({"user": admin_public_payload(row)})
+
+
+@app.post("/api/admin/users/<user_id>/disable")
+def disable_admin_user(user_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    with db() as conn:
+        old = conn.execute("SELECT * FROM admins WHERE id = ?", (user_id,)).fetchone()
+        if not old:
+            return jsonify({"error": "not_found", "message": "المستخدم غير موجود."}), 404
+        blocked = ensure_user_manageable(admin, old, action="disable")
+        if blocked:
+            return blocked
+        if old["role"] == "owner" and owner_count(conn) <= 1:
+            return protected_account_response()
+        conn.execute("UPDATE admins SET is_active = FALSE, updated_at = ? WHERE id = ?", (now_iso(), user_id))
+        conn.execute("DELETE FROM admin_sessions WHERE admin_id = ?", (user_id,))
+        audit(conn, admin["id"], "disable_account", "admin_user", user_id, "تم إيقاف حساب مستخدم", {"is_active": bool(old["is_active"])}, {"is_active": False})
+        row = conn.execute("SELECT * FROM admins WHERE id = ?", (user_id,)).fetchone()
+        return jsonify({"user": admin_public_payload(row)})
+
+
+@app.post("/api/admin/users/<user_id>/enable")
+def enable_admin_user(user_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    with db() as conn:
+        old = conn.execute("SELECT * FROM admins WHERE id = ?", (user_id,)).fetchone()
+        if not old:
+            return jsonify({"error": "not_found", "message": "المستخدم غير موجود."}), 404
+        if old["role"] == "owner" and admin["role"] != "owner":
+            return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
+        conn.execute("UPDATE admins SET is_active = TRUE, updated_at = ? WHERE id = ?", (now_iso(), user_id))
+        audit(conn, admin["id"], "enable_account", "admin_user", user_id, "تم تفعيل حساب مستخدم", {"is_active": bool(old["is_active"])}, {"is_active": True})
+        row = conn.execute("SELECT * FROM admins WHERE id = ?", (user_id,)).fetchone()
+        return jsonify({"user": admin_public_payload(row)})
+
+
+@app.post("/api/admin/users/<user_id>/reset-password")
+def reset_admin_user_password(user_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    temporary_password = payload.get("temporary_password") or payload.get("temporaryPassword") or payload.get("password") or ""
+    if len(temporary_password) < 8:
+        return jsonify({"error": "validation", "message": "كلمة المرور المؤقتة يجب أن تكون 8 أحرف على الأقل."}), 400
+    with db() as conn:
+        old = conn.execute("SELECT * FROM admins WHERE id = ?", (user_id,)).fetchone()
+        if not old:
+            return jsonify({"error": "not_found", "message": "المستخدم غير موجود."}), 404
+        blocked = ensure_user_manageable(admin, old, action="reset_password")
+        if blocked:
+            return blocked
+        password_hash, salt = hash_password(temporary_password)
+        conn.execute(
+            "UPDATE admins SET password_hash = ?, password_salt = ?, must_change_password = TRUE, updated_at = ? WHERE id = ?",
+            (password_hash, salt, now_iso(), user_id),
+        )
+        conn.execute("DELETE FROM admin_sessions WHERE admin_id = ?", (user_id,))
+        audit(conn, admin["id"], "reset_password", "admin_user", user_id, "تمت إعادة تعيين كلمة مرور حساب", None, {"must_change_password": True})
+        row = conn.execute("SELECT * FROM admins WHERE id = ?", (user_id,)).fetchone()
         return jsonify({"user": admin_public_payload(row)})
 
 
@@ -2459,13 +2781,13 @@ def create_deal() -> Response:
     client_name = (payload.get("client_name") or payload.get("clientName") or "").strip()
     apartment_id = payload.get("apartment_id") or payload.get("apartmentId")
     if not client_name or not apartment_id:
-        return jsonify({"error": "validation", "message": "ÙŠØ±Ø¬Ù‰ Ù…Ø±Ø§Ø¬Ø¹Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø©."}), 400
+        return jsonify({"error": "validation", "message": "يرجى مراجعة البيانات المطلوبة."}), 400
     with db() as conn:
         apartment = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
         if not apartment:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø´Ù‚Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©."}), 404
+            return jsonify({"error": "not_found", "message": "الشقة غير موجودة."}), 404
         if apartment["status"] == "sold":
-            return jsonify({"error": "validation", "message": "Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ù†Ø´Ø§Ø¡ Ø·Ù„Ø¨ Ø¹Ù„Ù‰ Ø´Ù‚Ø© Ù…Ø¨Ø§Ø¹Ø©."}), 409
+            return jsonify({"error": "validation", "message": "لا يمكن إنشاء طلب على شقة مباعة."}), 409
         deal_id = public_id("deal")
         conn.execute(
             """
@@ -2488,7 +2810,7 @@ def create_deal() -> Response:
                 now_iso(),
             ),
         )
-        audit(conn, admin["id"], "create", "deal", deal_id, f"ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ø¯ÙŠÙ„ Ø¬Ø¯ÙŠØ¯ Ù„Ù„Ø¹Ù…ÙŠÙ„ {client_name}", None, payload)
+        audit(conn, admin["id"], "create", "deal", deal_id, f"تم إنشاء ديل جديد للعميل {client_name}", None, payload)
         row = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
         return jsonify({"deal": deal_payload(conn, row)})
 
@@ -2502,11 +2824,11 @@ def update_deal(deal_id: str) -> Response:
     with db() as conn:
         old = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø·Ù„Ø¨ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "الطلب غير موجود."}), 404
         if admin["role"] == "assistant" and old["assistant_id"] != admin["id"]:
-            return jsonify({"error": "forbidden", "message": "Ù„ÙŠØ³ Ù„Ø¯ÙŠÙƒ ØµÙ„Ø§Ø­ÙŠØ© Ù„ØªÙ†ÙÙŠØ° Ù‡Ø°Ù‡ Ø§Ù„Ø¹Ù…Ù„ÙŠØ©."}), 403
+            return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
         if admin["role"] == "assistant" and old["status"] not in {"draft", "revision_requested"}:
-            return jsonify({"error": "validation", "message": "Ù„Ø§ ÙŠÙ…ÙƒÙ† ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ø·Ù„Ø¨ Ø¨Ø¹Ø¯ Ø¥Ø±Ø³Ø§Ù„Ù‡ Ù„Ù„Ù…ÙˆØ§ÙÙ‚Ø©."}), 409
+            return jsonify({"error": "validation", "message": "لا يمكن تعديل الطلب بعد إرساله للموافقة."}), 409
         conn.execute(
             """
             UPDATE deals SET client_name = ?, client_phone = ?, apartment_id = ?, proposed_total = ?, down_payment = ?, payment_plan = ?, notes = ?, updated_at = ?
@@ -2524,7 +2846,7 @@ def update_deal(deal_id: str) -> Response:
                 deal_id,
             ),
         )
-        audit(conn, admin["id"], "update", "deal", deal_id, "ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¯ÙŠÙ„", dict(old), payload)
+        audit(conn, admin["id"], "update", "deal", deal_id, "تم تعديل بيانات الديل", dict(old), payload)
         row = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
         return jsonify({"deal": deal_payload(conn, row)})
 
@@ -2538,18 +2860,18 @@ def change_deal_status(deal_id: str, target_status: str, roles: set[str], descri
     with db() as conn:
         old = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø·Ù„Ø¨ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "الطلب غير موجود."}), 404
         if admin["role"] == "assistant" and old["assistant_id"] != admin["id"]:
-            return jsonify({"error": "forbidden", "message": "Ù„ÙŠØ³ Ù„Ø¯ÙŠÙƒ ØµÙ„Ø§Ø­ÙŠØ© Ù„ØªÙ†ÙÙŠØ° Ù‡Ø°Ù‡ Ø§Ù„Ø¹Ù…Ù„ÙŠØ©."}), 403
+            return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
         if target_status in {"rejected", "revision_requested"} and admin["role"] == "owner" and not owner_notes:
-            return jsonify({"error": "validation", "message": "ÙŠØ±Ø¬Ù‰ Ø¥Ø¶Ø§ÙØ© Ø³Ø¨Ø¨ ÙˆØ§Ø¶Ø­ Ù‚Ø¨Ù„ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©."}), 400
+            return jsonify({"error": "validation", "message": "يرجى إضافة سبب واضح قبل المتابعة."}), 400
         if target_status == "approved":
             apartment = conn.execute("SELECT * FROM apartments WHERE id = ?", (old["apartment_id"],)).fetchone() if old["apartment_id"] else None
             if apartment and apartment["status"] == "sold":
-                return jsonify({"error": "validation", "message": "Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø§Ø¹ØªÙ…Ø§Ø¯ Ø¯ÙŠÙ„ Ø¹Ù„Ù‰ Ø´Ù‚Ø© Ù…Ø¨Ø§Ø¹Ø©."}), 409
+                return jsonify({"error": "validation", "message": "لا يمكن اعتماد ديل على شقة مباعة."}), 409
             active_client = active_client_for_apartment(conn, old["apartment_id"], exclude_client_id=old["client_id"]) if old["apartment_id"] else None
             if active_client:
-                return jsonify({"error": "validation", "message": "Ù‡Ø°Ù‡ Ø§Ù„Ø´Ù‚Ø© Ù…Ø­Ø¬ÙˆØ²Ø© Ø¨Ø§Ù„ÙØ¹Ù„ Ù„Ø¹Ù…ÙŠÙ„ Ø¢Ø®Ø±."}), 409
+                return jsonify({"error": "validation", "message": "هذه الشقة محجوزة بالفعل لعميل آخر."}), 409
         approved_by = admin["id"] if target_status in {"approved", "rejected", "revision_requested", "finalized"} else old["approved_by"]
         approved_at = now_iso() if target_status == "approved" else old["approved_at"]
         conn.execute(
@@ -2575,9 +2897,7 @@ def change_deal_status(deal_id: str, target_status: str, roles: set[str], descri
         elif target_status == "finalized":
             conn.execute("UPDATE deals SET finalized_at = ?, updated_at = ? WHERE id = ?", (now_iso(), now_iso(), deal_id))
             if old["client_id"]:
-                conn.execute("UPDATE clients SET reservation_status = 'sold', updated_at = ? WHERE id = ?", (now_iso(), old["client_id"]))
-            if old["apartment_id"]:
-                conn.execute("UPDATE apartments SET status = 'sold', updated_at = ? WHERE id = ?", (now_iso(), old["apartment_id"]))
+                recalc_client(conn, old["client_id"])
         audit(conn, admin["id"], "status", "deal", deal_id, description, dict(old), {"status": target_status})
         row = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
         return jsonify({"deal": deal_payload(conn, row)})
@@ -2585,22 +2905,201 @@ def change_deal_status(deal_id: str, target_status: str, roles: set[str], descri
 
 @app.post("/api/admin/deals/<deal_id>/submit")
 def submit_deal(deal_id: str) -> Response:
-    return change_deal_status(deal_id, "pending_approval", {"owner", "admin", "assistant"}, "ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø¯ÙŠÙ„ Ù„Ù„Ù…ÙˆØ§ÙÙ‚Ø©")
+    return change_deal_status(deal_id, "pending_approval", {"owner", "admin", "assistant"}, "تم إرسال الديل للموافقة")
 
 
 @app.post("/api/admin/deals/<deal_id>/approve")
 def approve_deal(deal_id: str) -> Response:
-    return change_deal_status(deal_id, "approved", {"owner"}, "ØªÙ…Øª Ø§Ù„Ù…ÙˆØ§ÙÙ‚Ø© Ø¹Ù„Ù‰ Ø§Ù„Ø¯ÙŠÙ„")
+    return change_deal_status(deal_id, "approved", {"owner"}, "تمت الموافقة على الديل")
 
 
 @app.post("/api/admin/deals/<deal_id>/reject")
 def reject_deal(deal_id: str) -> Response:
-    return change_deal_status(deal_id, "rejected", {"owner"}, "ØªÙ… Ø±ÙØ¶ Ø§Ù„Ø¯ÙŠÙ„")
+    return change_deal_status(deal_id, "rejected", {"owner"}, "تم رفض الديل")
 
 
 @app.post("/api/admin/deals/<deal_id>/request-revision")
 def request_deal_revision(deal_id: str) -> Response:
-    return change_deal_status(deal_id, "revision_requested", {"owner"}, "ØªÙ… Ø·Ù„Ø¨ ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ø¯ÙŠÙ„")
+    return change_deal_status(deal_id, "revision_requested", {"owner"}, "تم طلب تعديل الديل")
+
+
+@app.post("/api/admin/deals/<deal_id>/cancel")
+def cancel_deal(deal_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or payload.get("cancel_reason") or payload.get("cancelReason") or "").strip()
+    if not reason:
+        return jsonify({"error": "validation", "message": "سبب الإلغاء مطلوب."}), 400
+    with db() as conn:
+        old = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        if not old:
+            return jsonify({"error": "not_found", "message": "الديل غير موجود."}), 404
+        if old["status"] == "cancelled":
+            return jsonify({"deal": deal_payload(conn, old)})
+        if old["status"] == "finalized" and admin["role"] != "owner":
+            return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
+        if old["status"] not in {"draft", "pending_approval", "approved", "finalized", "revision_requested"}:
+            return jsonify({"error": "validation", "message": "لا يمكن إلغاء هذا الديل."}), 409
+
+        conn.execute(
+            "UPDATE deals SET status = 'cancelled', owner_notes = ?, updated_at = ? WHERE id = ?",
+            (reason, now_iso(), deal_id),
+        )
+        if old["client_id"]:
+            conn.execute(
+                "UPDATE clients SET reservation_status = 'cancelled', office_notes = ?, updated_at = ? WHERE id = ?",
+                (f"تم إلغاء الديل. السبب: {reason}", now_iso(), old["client_id"]),
+            )
+            recalc_client(conn, old["client_id"])
+        release_apartment_for_deal(conn, old, admin["id"])
+        audit(conn, admin["id"], "cancel_deal", "deal", deal_id, "تم إلغاء ديل", dict(old), {"status": "cancelled", "reason": reason})
+        row = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        return jsonify({"deal": deal_payload(conn, row)})
+
+
+@app.delete("/api/admin/deals/<deal_id>")
+def delete_draft_deal(deal_id: str) -> Response:
+    return delete_draft_deal_impl(deal_id)
+
+
+@app.post("/api/admin/deals/<deal_id>/delete")
+def post_delete_draft_deal(deal_id: str) -> Response:
+    return delete_draft_deal_impl(deal_id)
+
+
+def delete_draft_deal_impl(deal_id: str) -> Response:
+    admin = require_admin({"owner", "admin", "assistant"})
+    if not isinstance(admin, dict):
+        return admin
+    with db() as conn:
+        old = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        if not old:
+            return jsonify({"error": "not_found", "message": "الديل غير موجود."}), 404
+        if admin["role"] == "assistant" and old["assistant_id"] != admin["id"]:
+            return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
+        if old["status"] != "draft":
+            return jsonify({"error": "validation", "message": "لا يمكن حذف إلا ديل المسودة."}), 409
+        if deal_has_payments(conn, old):
+            return jsonify({"error": "validation", "message": "لا يمكن حذف ديل مرتبط بمدفوعات. يمكن إلغاء الديل فقط مع الاحتفاظ بالسجل."}), 409
+        audit(conn, admin["id"], "delete_draft_deal", "deal", deal_id, "تم حذف مسودة ديل", dict(old), None)
+        conn.execute("DELETE FROM deals WHERE id = ?", (deal_id,))
+        release_apartment_for_deal(conn, old, admin["id"])
+        return jsonify({"ok": True})
+
+
+@app.post("/api/admin/clients/<client_id>/cancel")
+def cancel_client_reservation(client_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or payload.get("cancel_reason") or payload.get("cancelReason") or "").strip()
+    if not reason:
+        return jsonify({"error": "validation", "message": "سبب الإلغاء مطلوب."}), 400
+    with db() as conn:
+        old = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not old:
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
+        if old["reservation_status"] == "cancelled":
+            return jsonify({"client": client_payload(conn, old)})
+        old_apartment_id = old["apartment_id"]
+        notes = f"{old['office_notes'] or ''}\nتم إلغاء الحجز. السبب: {reason}".strip()
+        conn.execute(
+            "UPDATE clients SET reservation_status = 'cancelled', office_notes = ?, updated_at = ? WHERE id = ?",
+            (notes, now_iso(), client_id),
+        )
+        related_deals = conn.execute(
+            "SELECT * FROM deals WHERE client_id = ? AND status NOT IN ('cancelled','rejected','finalized')",
+            (client_id,),
+        ).fetchall()
+        for deal in related_deals:
+            conn.execute(
+                "UPDATE deals SET status = 'cancelled', owner_notes = ?, updated_at = ? WHERE id = ?",
+                (reason, now_iso(), deal["id"]),
+            )
+            audit(conn, admin["id"], "cancel_deal", "deal", deal["id"], "تم إلغاء الديل بعد إلغاء حجز العميل", dict(deal), {"status": "cancelled", "reason": reason})
+        recalc_client(conn, client_id)
+        if old_apartment_id:
+            active_client = active_client_for_apartment(conn, old_apartment_id, exclude_client_id=client_id)
+            if not active_client:
+                conn.execute(
+                    "UPDATE apartments SET status = 'available', assigned_client_id = NULL, updated_at = ? WHERE id = ? AND status != 'sold'",
+                    (now_iso(), old_apartment_id),
+                )
+                audit(conn, admin["id"], "release_apartment", "apartment", old_apartment_id, "تم تحرير الشقة بعد إلغاء حجز العميل", {"client_id": client_id}, {"status": "available"})
+        audit(conn, admin["id"], "cancel_client", "client", client_id, "تم إلغاء حجز العميل", dict(old), {"reservation_status": "cancelled", "reason": reason})
+        row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        return jsonify({"client": client_payload(conn, row)})
+
+
+@app.post("/api/admin/clients/<client_id>/delete-with-records")
+def delete_client_with_financial_records(client_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    password = payload.get("password") or payload.get("current_password") or payload.get("currentPassword") or ""
+    reason = (payload.get("reason") or "").strip()
+    if not verify_admin_confirmation_password(admin, password):
+        return jsonify({"error": "validation", "message": "كلمة المرور غير صحيحة."}), 401
+    if not reason:
+        return jsonify({"error": "validation", "message": "سبب الحذف مطلوب."}), 400
+
+    with db() as conn:
+        old = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not old:
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
+        payments = rows_to_dicts(conn.execute("SELECT id, amount, payment_status, receipt_number FROM payments WHERE client_id = ?", (client_id,)).fetchall())
+        installments = rows_to_dicts(conn.execute("SELECT id, amount, paid_amount, status FROM installments WHERE client_id = ?", (client_id,)).fetchall())
+        related_deals = rows_to_dicts(conn.execute("SELECT * FROM deals WHERE client_id = ?", (client_id,)).fetchall())
+        apartment_id = old["apartment_id"]
+
+        for deal in related_deals:
+            new_status = deal["status"]
+            if deal["status"] not in {"cancelled", "rejected", "finalized"}:
+                new_status = "cancelled"
+            conn.execute(
+                "UPDATE deals SET client_id = NULL, status = ?, owner_notes = ?, updated_at = ? WHERE id = ?",
+                (new_status, reason, now_iso(), deal["id"]),
+            )
+            audit(
+                conn,
+                admin["id"],
+                "unlink_client_from_deal",
+                "deal",
+                deal["id"],
+                "تم فصل العميل عن الديل قبل حذف السجل المالي",
+                deal,
+                {"client_id": None, "status": new_status, "reason": reason},
+            )
+
+        audit(
+            conn,
+            admin["id"],
+            "delete_client_with_financial_records",
+            "client",
+            client_id,
+            "تم حذف العميل مع السجل المالي بعد تأكيد كلمة المرور",
+            {
+                "client": dict(old),
+                "payments": payments,
+                "installments": installments,
+                "deals": related_deals,
+            },
+            {"reason": reason},
+        )
+        conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+        if apartment_id:
+            active_client = active_client_for_apartment(conn, apartment_id, exclude_client_id=client_id)
+            if not active_client:
+                conn.execute(
+                    "UPDATE apartments SET status = 'available', assigned_client_id = NULL, updated_at = ? WHERE id = ?",
+                    (now_iso(), apartment_id),
+                )
+                audit(conn, admin["id"], "release_apartment", "apartment", apartment_id, "تم تحرير الشقة بعد حذف العميل مع السجل المالي", {"client_id": client_id}, {"status": "available"})
+        return jsonify({"ok": True})
 
 
 @app.get("/api/admin/contracts")
@@ -2633,20 +3132,20 @@ def generate_contract() -> Response:
     deal_id = payload.get("deal_id") or payload.get("dealId")
     requested_type = payload.get("contract_type") or payload.get("contractType") or "draft_contract"
     if requested_type not in {"draft_contract", "final_contract"}:
-        return jsonify({"error": "validation", "message": "Ù†ÙˆØ¹ Ø§Ù„Ø¹Ù‚Ø¯ ØºÙŠØ± ØµØ­ÙŠØ­."}), 400
+        return jsonify({"error": "validation", "message": "نوع العقد غير صحيح."}), 400
     with db() as conn:
         deal = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not deal:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø·Ù„Ø¨ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "الطلب غير موجود."}), 404
         if admin["role"] == "assistant" and (deal["assistant_id"] != admin["id"] or requested_type != "draft_contract"):
-            return jsonify({"error": "forbidden", "message": "Ù„ÙŠØ³ Ù„Ø¯ÙŠÙƒ ØµÙ„Ø§Ø­ÙŠØ© Ù„ØªÙ†ÙÙŠØ° Ù‡Ø°Ù‡ Ø§Ù„Ø¹Ù…Ù„ÙŠØ©."}), 403
+            return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لتنفيذ هذه العملية."}), 403
         if requested_type == "final_contract" and admin["role"] != "owner":
-            return jsonify({"error": "forbidden", "message": "Ø¥ØµØ¯Ø§Ø± Ø§Ù„Ø¹Ù‚Ø¯ Ø§Ù„Ù†Ù‡Ø§Ø¦ÙŠ Ù…ØªØ§Ø­ Ù„Ù„Ù…Ø¯ÙŠØ± Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ ÙÙ‚Ø·."}), 403
+            return jsonify({"error": "forbidden", "message": "إصدار العقد النهائي متاح للمدير الرئيسي فقط."}), 403
         if requested_type == "final_contract" and deal["status"] != "approved":
-            return jsonify({"error": "validation", "message": "Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥ØµØ¯Ø§Ø± Ø§Ù„Ø¹Ù‚Ø¯ Ø§Ù„Ù†Ù‡Ø§Ø¦ÙŠ Ù‚Ø¨Ù„ Ø§Ù„Ù…ÙˆØ§ÙÙ‚Ø©."}), 409
+            return jsonify({"error": "validation", "message": "لا يمكن إصدار العقد النهائي قبل الموافقة."}), 409
         apartment = conn.execute("SELECT * FROM apartments WHERE id = ?", (deal["apartment_id"],)).fetchone()
         contract_id = public_id("contract")
-        title = "Ø§Ù„Ø¹Ù‚Ø¯ Ø§Ù„Ù†Ù‡Ø§Ø¦ÙŠ" if requested_type == "final_contract" else "Ø¹Ù‚Ø¯ Ù…Ø³ÙˆØ¯Ø©"
+        title = "العقد النهائي" if requested_type == "final_contract" else "عقد مسودة"
         filename = f"contract-{contract_id}.pdf"
         apartment_unit = normalize_display_text(apartment["unit_code"]) if apartment else "-"
         apartment_direction = normalize_display_text(apartment["direction_ar"]) if apartment else "-"
@@ -2654,20 +3153,20 @@ def generate_contract() -> Response:
         client_phone = normalize_display_text(deal["client_phone"] or "-")
         sections = [
             (
-                "Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ØªØ¹Ø§Ù‚Ø¯",
+                "بيانات التعاقد",
                 [
-                    f"Ø§Ø³Ù… Ø§Ù„Ø¹Ù…ÙŠÙ„: {client_name}",
-                    f"Ø±Ù‚Ù… Ø§Ù„Ù‡Ø§ØªÙ: {client_phone}",
-                    f"Ø§Ù„ÙˆØ­Ø¯Ø©: {apartment_unit}",
-                    f"Ø§Ù„Ø¯ÙˆØ±: {apartment['floor_number'] if apartment else '-'}",
-                    f"Ø§Ù„Ù…Ø³Ø§Ø­Ø©: {apartment['area'] if apartment else '-'} Ù…ØªØ± Ù…Ø±Ø¨Ø¹",
-                    f"Ø§Ù„Ø§ØªØ¬Ø§Ù‡: {apartment_direction}",
-                    f"Ø§Ù„Ù‚ÙŠÙ…Ø© Ø§Ù„Ù…Ù‚ØªØ±Ø­Ø©: {format_money(deal['proposed_total'])}",
-                    f"Ø­Ø§Ù„Ø© Ø§Ù„Ø·Ù„Ø¨: {status_label_ar(deal['status'])}",
+                    f"اسم العميل: {client_name}",
+                    f"رقم الهاتف: {client_phone}",
+                    f"الوحدة: {apartment_unit}",
+                    f"الدور: {apartment['floor_number'] if apartment else '-'}",
+                    f"المساحة: {apartment['area'] if apartment else '-'} متر مربع",
+                    f"الاتجاه: {apartment_direction}",
+                    f"القيمة المقترحة: {format_money(deal['proposed_total'])}",
+                    f"حالة الطلب: {status_label_ar(deal['status'])}",
                 ],
             )
         ]
-        pdf_path = generate_pdf(title, sections, filename, "Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³ØªÙ†Ø¯ ØµØ§Ø¯Ø± Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠÙ‹Ø§ Ù…Ù† Ù†Ø¸Ø§Ù… Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø­Ø¬ÙˆØ²Ø§Øª.")
+        pdf_path = generate_pdf(title, sections, filename, "هذا المستند صادر إلكترونيًا من نظام إدارة الحجوزات.")
         conn.execute(
             """
             INSERT INTO contracts (id, deal_id, contract_type, status, pdf_url, issued_by, issued_at, created_at)
@@ -2682,7 +3181,7 @@ def generate_contract() -> Response:
                 conn.execute("UPDATE clients SET reservation_status = 'sold', updated_at = ? WHERE id = ?", (now_iso(), client_id))
             if deal["apartment_id"]:
                 conn.execute("UPDATE apartments SET status = 'sold', updated_at = ? WHERE id = ?", (now_iso(), deal["apartment_id"]))
-        audit(conn, admin["id"], "generate", "contract", contract_id, f"ØªÙ… Ø¥ØµØ¯Ø§Ø± {title}", None, payload)
+        audit(conn, admin["id"], "generate", "contract", contract_id, f"تم إصدار {title}", None, payload)
         row = conn.execute("SELECT * FROM contracts WHERE id = ?", (contract_id,)).fetchone()
         return jsonify({"contract": contract_payload(row), "url": f"/generated/{pdf_path.name}"})
 
@@ -2732,23 +3231,23 @@ def owner_deal_detail(deal_id: str) -> Response:
     with db() as conn:
         row = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not row:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¯ÙŠÙ„ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "الديل غير موجود."}), 404
         return jsonify({"deal": deal_payload(conn, row)})
 
 
 @app.post("/api/owner/deals/<deal_id>/approve")
 def owner_approve_deal(deal_id: str) -> Response:
-    return change_deal_status(deal_id, "approved", {"owner"}, "ØªÙ…Øª Ø§Ù„Ù…ÙˆØ§ÙÙ‚Ø© Ø¹Ù„Ù‰ Ø§Ù„Ø¯ÙŠÙ„")
+    return change_deal_status(deal_id, "approved", {"owner"}, "تمت الموافقة على الديل")
 
 
 @app.post("/api/owner/deals/<deal_id>/reject")
 def owner_reject_deal(deal_id: str) -> Response:
-    return change_deal_status(deal_id, "rejected", {"owner"}, "ØªÙ… Ø±ÙØ¶ Ø§Ù„Ø¯ÙŠÙ„")
+    return change_deal_status(deal_id, "rejected", {"owner"}, "تم رفض الديل")
 
 
 @app.post("/api/owner/deals/<deal_id>/request-revision")
 def owner_request_deal_revision(deal_id: str) -> Response:
-    return change_deal_status(deal_id, "revision_requested", {"owner"}, "ØªÙ… Ø·Ù„Ø¨ ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ø¯ÙŠÙ„")
+    return change_deal_status(deal_id, "revision_requested", {"owner"}, "تم طلب تعديل الديل")
 
 
 @app.post("/api/owner/deals/<deal_id>/finalize")
@@ -2759,10 +3258,20 @@ def owner_finalize_deal(deal_id: str) -> Response:
     with db() as conn:
         deal = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
         if not deal:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¯ÙŠÙ„ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "الديل غير موجود."}), 404
         if deal["status"] != "approved":
-            return jsonify({"error": "validation", "message": "Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„Ø¯ÙŠÙ„ Ù‚Ø¨Ù„ Ø§Ù„Ù…ÙˆØ§ÙÙ‚Ø© Ø¹Ù„ÙŠÙ‡."}), 409
-    return change_deal_status(deal_id, "finalized", {"owner"}, "ØªÙ… Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„Ø¯ÙŠÙ„")
+            return jsonify({"error": "validation", "message": "لا يمكن إنهاء الديل قبل الموافقة عليه."}), 409
+    return change_deal_status(deal_id, "finalized", {"owner"}, "تم إنهاء الديل")
+
+
+@app.post("/api/owner/deals/<deal_id>/cancel")
+def owner_cancel_deal(deal_id: str) -> Response:
+    return cancel_deal(deal_id)
+
+
+@app.delete("/api/owner/deals/<deal_id>")
+def owner_delete_draft_deal(deal_id: str) -> Response:
+    return delete_draft_deal_impl(deal_id)
 
 
 @app.get("/api/owner/clients")
@@ -2786,7 +3295,7 @@ def owner_client_detail(client_id: str) -> Response:
     with db() as conn:
         row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if not row:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¹Ù…ÙŠÙ„ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
         return jsonify({"client": client_payload(conn, row)})
 
 
@@ -2827,7 +3336,7 @@ def owner_update_apartment(apartment_id: str) -> Response:
     with db() as conn:
         old = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
         if not old:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø´Ù‚Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©."}), 404
+            return jsonify({"error": "not_found", "message": "الشقة غير موجودة."}), 404
         status = payload.get("status") or old["status"]
         conn.execute(
             """
@@ -2842,7 +3351,7 @@ def owner_update_apartment(apartment_id: str) -> Response:
                 apartment_id,
             ),
         )
-        audit(conn, admin["id"], "update", "apartment", apartment_id, "ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø´Ù‚Ø©", dict(old), payload)
+        audit(conn, admin["id"], "update", "apartment", apartment_id, "تم تعديل بيانات الشقة", dict(old), payload)
         row = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
         return jsonify({"apartment": apartment_payload(row)})
 
@@ -2896,7 +3405,7 @@ def owner_patch_settings() -> Response:
             upsert_setting(conn, "receipt_prefix", payload["systemSettings"]["receipt_prefix"])
         if isinstance(payload.get("contractTemplate"), dict) and "footer_text" in payload["contractTemplate"]:
             upsert_setting(conn, "statement_footer", payload["contractTemplate"]["footer_text"])
-        audit(conn, admin["id"], "update", "settings", "owner_settings", "ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ù…Ø§Ù„Ùƒ", old, payload)
+        audit(conn, admin["id"], "update", "settings", "owner_settings", "تم تعديل إعدادات المالك", old, payload)
         return jsonify({"settings": owner_settings_payload(conn)})
 
 
@@ -2920,7 +3429,7 @@ def owner_patch_contract_template() -> Response:
         upsert_setting(conn, "contract_template", payload)
         if "footer_text" in payload:
             upsert_setting(conn, "statement_footer", payload["footer_text"])
-        audit(conn, admin["id"], "update", "contract_template", "contract_template", "ØªÙ… Ø­ÙØ¸ ØµÙŠØºØ© Ø§Ù„Ø¹Ù‚Ø¯", old, payload)
+        audit(conn, admin["id"], "update", "contract_template", "contract_template", "تم حفظ صيغة العقد", old, payload)
         return jsonify({"contractTemplate": setting_json(conn, "contract_template", {})})
 
 
@@ -2942,7 +3451,7 @@ def owner_patch_price_settings() -> Response:
     with db() as conn:
         old = setting_json(conn, "price_settings", {})
         upsert_setting(conn, "price_settings", payload)
-        audit(conn, admin["id"], "update", "price_settings", "price_settings", "ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ø£Ø³Ø¹Ø§Ø±", old, payload)
+        audit(conn, admin["id"], "update", "price_settings", "price_settings", "تم تعديل إعدادات الأسعار", old, payload)
         return jsonify({"priceSettings": setting_json(conn, "price_settings", {})})
 
 
@@ -2977,7 +3486,7 @@ def owner_audit_log_detail(log_id: str) -> Response:
             (log_id,),
         ).fetchone()
         if not row:
-            return jsonify({"error": "not_found", "message": "Ø³Ø¬Ù„ Ø§Ù„Ù†Ø´Ø§Ø· ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "سجل النشاط غير موجود."}), 404
         return jsonify({"auditLog": row_to_dict(row)})
 
 
@@ -2988,7 +3497,7 @@ def receipt_sections(conn: Any, payment_id: str) -> tuple[str, list[tuple[str, l
     client = conn.execute("SELECT * FROM clients WHERE id = ?", (payment["client_id"],)).fetchone()
     apartment = conn.execute("SELECT * FROM apartments WHERE id = ?", (payment["apartment_id"],)).fetchone()
     settings = all_settings(conn)
-    title = "Ø¥ÙŠØµØ§Ù„ Ø¯ÙØ¹"
+    title = "إيصال دفع"
     office_name = normalize_display_text(settings.get("office_name", ""))
     client_name = normalize_display_text(client["full_name"])
     client_code = normalize_display_text(client["client_code"])
@@ -2996,23 +3505,23 @@ def receipt_sections(conn: Any, payment_id: str) -> tuple[str, list[tuple[str, l
     direction = normalize_display_text(apartment["direction_ar"])
     notes = normalize_display_text(payment["notes"] or "-")
     lines = [
-        f"Ø§Ø³Ù… Ø§Ù„Ù…ÙƒØªØ¨: {office_name}",
-        f"Ø±Ù‚Ù… Ø§Ù„Ø¥ÙŠØµØ§Ù„: {payment['receipt_number'] or ''}",
-        f"ØªØ§Ø±ÙŠØ® Ø§Ù„Ø¯ÙØ¹: {payment['payment_date']}",
-        f"Ø§Ø³Ù… Ø§Ù„Ø¹Ù…ÙŠÙ„: {client_name}",
-        f"ÙƒÙˆØ¯ Ø§Ù„Ø­Ø¬Ø²: {client_code}",
-        f"Ø±Ù‚Ù… Ø§Ù„ÙˆØ­Ø¯Ø©: {unit_code}",
-        f"Ø§Ù„Ø¯ÙˆØ±: {apartment['floor_number']}",
-        f"Ø§Ù„Ù…Ø³Ø§Ø­Ø©: {apartment['area']} Ù…ØªØ± Ù…Ø±Ø¨Ø¹",
-        f"Ø§Ù„Ø§ØªØ¬Ø§Ù‡: {direction}",
-        f"Ø§Ù„Ù…Ø¨Ù„Øº: {format_money(payment['amount'])}",
-        f"Ø·Ø±ÙŠÙ‚Ø© Ø§Ù„Ø¯ÙØ¹: {status_label_ar(payment['payment_method'])}",
-        f"Ø§Ù„Ø³Ø¹Ø± Ø§Ù„Ø¥Ø¬Ù…Ø§Ù„ÙŠ: {format_money(client['total_amount'])}",
-        f"Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ø¯ÙÙˆØ¹: {format_money(client['paid_amount'])}",
-        f"Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ: {format_money(client['remaining_amount'])}",
-        f"Ù…Ù„Ø§Ø­Ø¸Ø§Øª: {notes}",
+        f"اسم المكتب: {office_name}",
+        f"رقم الإيصال: {payment['receipt_number'] or ''}",
+        f"تاريخ الدفع: {payment['payment_date']}",
+        f"اسم العميل: {client_name}",
+        f"كود الحجز: {client_code}",
+        f"رقم الوحدة: {unit_code}",
+        f"الدور: {apartment['floor_number']}",
+        f"المساحة: {apartment['area']} متر مربع",
+        f"الاتجاه: {direction}",
+        f"المبلغ: {format_money(payment['amount'])}",
+        f"طريقة الدفع: {status_label_ar(payment['payment_method'])}",
+        f"السعر الإجمالي: {format_money(client['total_amount'])}",
+        f"إجمالي المدفوع: {format_money(client['paid_amount'])}",
+        f"المتبقي: {format_money(client['remaining_amount'])}",
+        f"ملاحظات: {notes}",
     ]
-    return title, [("Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¥ÙŠØµØ§Ù„", lines)], "Ù‡Ø°Ø§ Ø§Ù„Ø¥ÙŠØµØ§Ù„ ØµØ§Ø¯Ø± Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠÙ‹Ø§ Ù…Ù† Ù†Ø¸Ø§Ù… Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø­Ø¬ÙˆØ²Ø§Øª."
+    return title, [("بيانات الإيصال", lines)], "هذا الإيصال صادر إلكترونيًا من نظام إدارة الحجوزات."
 
 
 @app.post("/api/admin/receipts/generate")
@@ -3025,9 +3534,9 @@ def generate_receipt() -> Response:
     with db() as conn:
         payment = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
         if not payment:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¯ÙØ¹Ø© ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯Ø©."}), 404
+            return jsonify({"error": "not_found", "message": "الدفعة غير موجودة."}), 404
         if payment["payment_status"] != "confirmed":
-            return jsonify({"error": "validation", "message": "ÙŠÙ…ÙƒÙ† Ø¥Ù†Ø´Ø§Ø¡ Ø¥ÙŠØµØ§Ù„ Ù„Ù„Ø¯ÙØ¹Ø§Øª Ø§Ù„Ù…Ø¤ÙƒØ¯Ø© ÙÙ‚Ø·."}), 400
+            return jsonify({"error": "validation", "message": "يمكن إنشاء إيصال للدفعات المؤكدة فقط."}), 400
         if not payment["receipt_number"]:
             number = receipt_number(conn)
             conn.execute("UPDATE payments SET receipt_number = ?, updated_at = ? WHERE id = ?", (number, now_iso(), payment_id))
@@ -3036,7 +3545,7 @@ def generate_receipt() -> Response:
         filename = f"receipt-{payment_id}.pdf"
         path = generate_pdf(title, sections, filename, footer)
         conn.execute("UPDATE receipts SET receipt_pdf_url = ? WHERE payment_id = ?", (f"/generated/{filename}", payment_id))
-        audit(conn, admin["id"], "generate", "receipt", payment_id, "ØªÙ… ØªØ­Ù…ÙŠÙ„ Ø¥ÙŠØµØ§Ù„ Ø¯ÙØ¹")
+        audit(conn, admin["id"], "generate", "receipt", payment_id, "تم تحميل إيصال دفع")
         return jsonify({"url": f"/generated/{path.name}"})
 
 
@@ -3056,46 +3565,46 @@ def statement_sections(conn: Any, client_id: str) -> tuple[str, list[tuple[str, 
     office_notes = normalize_display_text(client["office_notes"] or "-")
     sections = [
         (
-            "Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¹Ù…ÙŠÙ„",
+            "بيانات العميل",
             [
-                f"Ø§Ø³Ù… Ø§Ù„Ø¹Ù…ÙŠÙ„: {client_name}",
-                f"ÙƒÙˆØ¯ Ø§Ù„Ø­Ø¬Ø²: {client_code}",
-                f"Ø§Ù„Ù‡Ø§ØªÙ: {client_phone}",
-                f"Ø­Ø§Ù„Ø© Ø§Ù„Ø­Ø¬Ø²: {status_label_ar(client['reservation_status'])}",
-                f"ØªØ§Ø±ÙŠØ® Ø§Ù„Ø­Ø¬Ø²: {client['reservation_date']}",
-                f"ØªØ§Ø±ÙŠØ® Ø§Ù„Ø§Ø³ØªÙ„Ø§Ù… Ø§Ù„Ù…ØªÙˆÙ‚Ø¹: {client['expected_delivery_date'] or '-'}",
+                f"اسم العميل: {client_name}",
+                f"كود الحجز: {client_code}",
+                f"الهاتف: {client_phone}",
+                f"حالة الحجز: {status_label_ar(client['reservation_status'])}",
+                f"تاريخ الحجز: {client['reservation_date']}",
+                f"تاريخ الاستلام المتوقع: {client['expected_delivery_date'] or '-'}",
             ],
         ),
         (
-            "ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø´Ù‚Ø©",
+            "تفاصيل الشقة",
             [
-                f"Ø±Ù‚Ù… Ø§Ù„ÙˆØ­Ø¯Ø©: {apartment_unit}",
-                f"Ø§Ù„Ø¯ÙˆØ±: {apartment['floor_number']}",
-                f"Ø§Ù„Ù…Ø³Ø§Ø­Ø©: {apartment['area']} Ù…ØªØ± Ù…Ø±Ø¨Ø¹",
-                f"Ø§Ù„Ø§ØªØ¬Ø§Ù‡: {apartment_direction}",
-                f"Ø­Ø§Ù„Ø© Ø§Ù„Ø´Ù‚Ø©: {status_label_ar(apartment['status'])}",
+                f"رقم الوحدة: {apartment_unit}",
+                f"الدور: {apartment['floor_number']}",
+                f"المساحة: {apartment['area']} متر مربع",
+                f"الاتجاه: {apartment_direction}",
+                f"حالة الشقة: {status_label_ar(apartment['status'])}",
             ],
         ),
         (
-            "Ù…Ù„Ø®Øµ Ø§Ù„Ø¯ÙØ¹",
+            "ملخص الدفع",
             [
-                f"Ø§Ù„Ø³Ø¹Ø± Ø§Ù„Ø¥Ø¬Ù…Ø§Ù„ÙŠ: {format_money(client['total_amount'])}",
-                f"Ø§Ù„Ù…Ø¯ÙÙˆØ¹: {format_money(client['paid_amount'])}",
-                f"Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ: {format_money(client['remaining_amount'])}",
-                f"Ø­Ø§Ù„Ø© Ø§Ù„Ø¯ÙØ¹: {status_label_ar(client['payment_status'])}",
+                f"السعر الإجمالي: {format_money(client['total_amount'])}",
+                f"المدفوع: {format_money(client['paid_amount'])}",
+                f"المتبقي: {format_money(client['remaining_amount'])}",
+                f"حالة الدفع: {status_label_ar(client['payment_status'])}",
             ],
         ),
         (
-            "Ø³Ø¬Ù„ Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª",
-            [f"{p['payment_date']} - {format_money(p['amount'])} - {status_label_ar(p['payment_method'])} - {p['receipt_number'] or '-'}" for p in payments] or ["Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ø¯ÙÙˆØ¹Ø§Øª"],
+            "سجل المدفوعات",
+            [f"{p['payment_date']} - {format_money(p['amount'])} - {status_label_ar(p['payment_method'])} - {p['receipt_number'] or '-'}" for p in payments] or ["لا توجد مدفوعات"],
         ),
         (
-            "Ø¬Ø¯ÙˆÙ„ Ø§Ù„Ø£Ù‚Ø³Ø§Ø·",
-            [f"Ù‚Ø³Ø· {i['installment_number']} - {i['due_date']} - {format_money(i['amount'])} - Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ {format_money(i['remaining_amount'])} - {status_label_ar(i['status'])}" for i in installments] or ["Ù„Ø§ ØªÙˆØ¬Ø¯ Ø£Ù‚Ø³Ø§Ø·"],
+            "جدول الأقساط",
+            [f"قسط {i['installment_number']} - {i['due_date']} - {format_money(i['amount'])} - المتبقي {format_money(i['remaining_amount'])} - {status_label_ar(i['status'])}" for i in installments] or ["لا توجد أقساط"],
         ),
-        ("Ù…Ù„Ø§Ø­Ø¸Ø§Øª Ø§Ù„Ù…ÙƒØªØ¨", [office_notes]),
+        ("ملاحظات المكتب", [office_notes]),
     ]
-    return "ÙƒØ´Ù Ø§Ù„Ø­Ø¬Ø²", sections, normalize_display_text(settings.get("statement_footer") or "Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³ØªÙ†Ø¯ ØµØ§Ø¯Ø± Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠÙ‹Ø§ Ù…Ù† Ù†Ø¸Ø§Ù… Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø­Ø¬ÙˆØ²Ø§Øª.")
+    return "كشف الحجز", sections, normalize_display_text(settings.get("statement_footer") or "هذا المستند صادر إلكترونيًا من نظام إدارة الحجوزات.")
 
 
 @app.get("/api/client/statement/<client_id>")
@@ -3104,13 +3613,13 @@ def client_statement(client_id: str) -> Response:
     with db() as conn:
         rows = rows_for_portfolio_code(conn, code)
         if not rows or not any(row["id"] == client_id for row in rows):
-            return jsonify({"error": "not_found", "message": "Ù„Ù… Ù†ØªÙ…ÙƒÙ† Ù…Ù† Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† ÙƒÙˆØ¯ Ø§Ù„Ø­Ø¬Ø²."}), 404
+            return jsonify({"error": "not_found", "message": "لم نتمكن من التحقق من كود الحجز."}), 404
         client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         title, sections, footer = statement_sections(conn, client_id)
         filename = f"statement-{client_id}.pdf"
         path = generate_pdf(title, sections, filename, footer)
         public_code = client["portfolio_code"] or client["client_code"]
-        return send_file(path, as_attachment=True, download_name=f"ÙƒØ´Ù-Ø§Ù„Ø­Ø¬Ø²-{public_code}.pdf")
+        return send_file(path, as_attachment=True, download_name=f"كشف-الحجز-{public_code}.pdf")
 
 
 @app.get("/api/admin/statement/<client_id>")
@@ -3121,12 +3630,12 @@ def admin_statement(client_id: str) -> Response:
     with db() as conn:
         client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if not client:
-            return jsonify({"error": "not_found", "message": "Ø§Ù„Ø¹Ù…ÙŠÙ„ ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯."}), 404
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
         title, sections, footer = statement_sections(conn, client_id)
         filename = f"statement-{client_id}.pdf"
         path = generate_pdf(title, sections, filename, footer)
-        audit(conn, admin["id"], "export", "statement", client_id, "ØªÙ… ØªØ­Ù…ÙŠÙ„ ÙƒØ´Ù Ø­Ø¬Ø²")
-        return send_file(path, as_attachment=True, download_name=f"ÙƒØ´Ù-Ø§Ù„Ø­Ø¬Ø²-{client['client_code']}.pdf")
+        audit(conn, admin["id"], "export", "statement", client_id, "تم تحميل كشف حجز")
+        return send_file(path, as_attachment=True, download_name=f"كشف-الحجز-{client['client_code']}.pdf")
 
 
 def workbook_response(workbook: Workbook, filename: str) -> Response:
@@ -3150,8 +3659,8 @@ def export_excel(kind: str) -> Response:
     ws = wb.active
     with db() as conn:
         if kind == "clients":
-            ws.title = "Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡"
-            ws.append(["Ø§Ø³Ù… Ø§Ù„Ø¹Ù…ÙŠÙ„", "ÙƒÙˆØ¯ Ø§Ù„Ø­Ø¬Ø²", "Ø±Ù‚Ù… Ø§Ù„Ø´Ù‚Ø©", "Ø§Ù„Ø¯ÙˆØ±", "Ø§Ù„Ù…Ø³Ø§Ø­Ø©", "Ø§Ù„Ø§ØªØ¬Ø§Ù‡", "Ø§Ù„Ø³Ø¹Ø± Ø§Ù„Ø¥Ø¬Ù…Ø§Ù„ÙŠ", "Ø§Ù„Ù…Ø¯ÙÙˆØ¹", "Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ", "Ø­Ø§Ù„Ø© Ø§Ù„Ø­Ø¬Ø²", "Ø­Ø§Ù„Ø© Ø§Ù„Ø¯ÙØ¹", "ØªØ§Ø±ÙŠØ® Ø§Ù„Ø­Ø¬Ø²"])
+            ws.title = "العملاء"
+            ws.append(["اسم العميل", "كود الحجز", "رقم الشقة", "الدور", "المساحة", "الاتجاه", "السعر الإجمالي", "المدفوع", "المتبقي", "حالة الحجز", "حالة الدفع", "تاريخ الحجز"])
             rows = conn.execute(
                 """
                 SELECT clients.*, apartments.unit_code, apartments.floor_number, apartments.area, apartments.direction_ar
@@ -3162,8 +3671,8 @@ def export_excel(kind: str) -> Response:
             for r in rows:
                 ws.append([r["full_name"], r["client_code"], r["unit_code"], r["floor_number"], r["area"], r["direction_ar"], r["total_amount"], r["paid_amount"], r["remaining_amount"], status_label_ar(r["reservation_status"]), status_label_ar(r["payment_status"]), r["reservation_date"]])
         elif kind == "payments":
-            ws.title = "Ø§Ù„Ù…Ø¯ÙÙˆØ¹Ø§Øª"
-            ws.append(["Ø§Ø³Ù… Ø§Ù„Ø¹Ù…ÙŠÙ„", "ÙƒÙˆØ¯ Ø§Ù„Ø­Ø¬Ø²", "Ø±Ù‚Ù… Ø§Ù„Ø´Ù‚Ø©", "ØªØ§Ø±ÙŠØ® Ø§Ù„Ø¯ÙØ¹", "Ø§Ù„Ù…Ø¨Ù„Øº", "Ø·Ø±ÙŠÙ‚Ø© Ø§Ù„Ø¯ÙØ¹", "Ø­Ø§Ù„Ø© Ø§Ù„Ø¯ÙØ¹Ø©", "Ø±Ù‚Ù… Ø§Ù„Ø¥ÙŠØµØ§Ù„", "Ù…Ù„Ø§Ø­Ø¸Ø§Øª"])
+            ws.title = "المدفوعات"
+            ws.append(["اسم العميل", "كود الحجز", "رقم الشقة", "تاريخ الدفع", "المبلغ", "طريقة الدفع", "حالة الدفعة", "رقم الإيصال", "ملاحظات"])
             rows = conn.execute(
                 """
                 SELECT payments.*, clients.full_name, clients.client_code, apartments.unit_code
@@ -3176,13 +3685,13 @@ def export_excel(kind: str) -> Response:
             for r in rows:
                 ws.append([r["full_name"], r["client_code"], r["unit_code"], r["payment_date"], r["amount"], status_label_ar(r["payment_method"]), status_label_ar(r["payment_status"]), r["receipt_number"], r["notes"]])
         elif kind == "apartments":
-            ws.title = "Ø§Ù„Ø´Ù‚Ù‚"
-            ws.append(["Ø±Ù‚Ù… Ø§Ù„Ø´Ù‚Ø©", "Ø§Ù„Ø¯ÙˆØ±", "Ø§Ù„Ù†ÙˆØ¹", "Ø§Ù„Ù…Ø³Ø§Ø­Ø©", "Ø§Ù„Ø§ØªØ¬Ø§Ù‡", "Ø§Ù„Ø³Ø¹Ø±", "Ø§Ù„Ø­Ø§Ù„Ø©", "Ù…Ù„Ø§Ø­Ø¸Ø§Øª"])
+            ws.title = "الشقق"
+            ws.append(["رقم الشقة", "الدور", "النوع", "المساحة", "الاتجاه", "السعر", "الحالة", "ملاحظات"])
             for r in conn.execute("SELECT * FROM apartments ORDER BY floor_number, apartment_type").fetchall():
                 ws.append([r["unit_code"], r["floor_number"], r["apartment_type"], r["area"], r["direction_ar"], r["price"], status_label_ar(r["status"]), r["notes"]])
         elif kind == "installments":
-            ws.title = "Ø§Ù„Ø£Ù‚Ø³Ø§Ø·"
-            ws.append(["Ø§Ø³Ù… Ø§Ù„Ø¹Ù…ÙŠÙ„", "ÙƒÙˆØ¯ Ø§Ù„Ø­Ø¬Ø²", "Ø±Ù‚Ù… Ø§Ù„Ù‚Ø³Ø·", "ØªØ§Ø±ÙŠØ® Ø§Ù„Ø§Ø³ØªØ­Ù‚Ø§Ù‚", "Ù‚ÙŠÙ…Ø© Ø§Ù„Ù‚Ø³Ø·", "Ø§Ù„Ù…Ø¯ÙÙˆØ¹", "Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ", "Ø§Ù„Ø­Ø§Ù„Ø©", "Ù…Ù„Ø§Ø­Ø¸Ø§Øª"])
+            ws.title = "الأقساط"
+            ws.append(["اسم العميل", "كود الحجز", "رقم القسط", "تاريخ الاستحقاق", "قيمة القسط", "المدفوع", "المتبقي", "الحالة", "ملاحظات"])
             rows = conn.execute(
                 """
                 SELECT installments.*, clients.full_name, clients.client_code
@@ -3193,15 +3702,15 @@ def export_excel(kind: str) -> Response:
             for r in rows:
                 ws.append([r["full_name"], r["client_code"], r["installment_number"], r["due_date"], r["amount"], r["paid_amount"], r["remaining_amount"], status_label_ar(r["status"]), r["notes"]])
         elif kind == "financial-summary":
-            ws.title = "Ø§Ù„ØªÙ‚Ø±ÙŠØ± Ø§Ù„Ù…Ø§Ù„ÙŠ"
+            ws.title = "التقرير المالي"
             total_collected = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE payment_status = 'confirmed'").fetchone()[0]
             total_remaining = conn.execute("SELECT COALESCE(SUM(remaining_amount), 0) FROM clients").fetchone()[0]
-            ws.append(["Ø§Ù„Ø¨Ù†Ø¯", "Ø§Ù„Ù‚ÙŠÙ…Ø©"])
-            ws.append(["Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ø¨Ø§Ù„Øº Ø§Ù„Ù…Ø­ØµÙ„Ø©", total_collected])
-            ws.append(["Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…Ø¨Ø§Ù„Øº Ø§Ù„Ù…ØªØ¨Ù‚ÙŠØ©", total_remaining])
+            ws.append(["البند", "القيمة"])
+            ws.append(["إجمالي المبالغ المحصلة", total_collected])
+            ws.append(["إجمالي المبالغ المتبقية", total_remaining])
         else:
-            return jsonify({"error": "not_found", "message": "Ù†ÙˆØ¹ Ø§Ù„ØªØµØ¯ÙŠØ± ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ."}), 404
-        audit(conn, admin["id"], "export", kind, None, f"ØªÙ… ØªØµØ¯ÙŠØ± {kind}")
+            return jsonify({"error": "not_found", "message": "نوع التصدير غير معروف."}), 404
+        audit(conn, admin["id"], "export", kind, None, f"تم تصدير {kind}")
     return workbook_response(wb, f"{kind}.xlsx")
 
 
@@ -3251,16 +3760,16 @@ def create_project_update() -> Response:
     required_fields = ['title', 'description', 'update_date', 'stage', 'media_type']
     for field in required_fields:
         if not payload.get(field):
-            return jsonify({"error": f"Ù‡Ø°Ø§ Ø§Ù„Ø­Ù‚Ù„ Ù…Ø·Ù„ÙˆØ¨: {field}"}), 400
+            return jsonify({"error": f"هذا الحقل مطلوب: {field}"}), 400
     
     # Validate stage
     valid_stages = ['foundation', 'concrete', 'walls', 'finishing', 'exterior', 'delivery', 'general']
     if payload.get('stage') not in valid_stages:
-        return jsonify({"error": "Ù…Ø±Ø­Ù„Ø© Ø§Ù„Ù…Ø´Ø±ÙˆØ¹ ØºÙŠØ± ØµØ§Ù„Ø­Ø©"}), 400
+        return jsonify({"error": "مرحلة المشروع غير صالحة"}), 400
     
     # Validate media type
     if payload.get('media_type') not in ['image', 'video']:
-        return jsonify({"error": "Ù†ÙˆØ¹ Ø§Ù„ÙˆØ³Ø§Ø¦Ø· ØºÙŠØ± ØµØ§Ù„Ø­"}), 400
+        return jsonify({"error": "نوع الوسائط غير صالح"}), 400
     
     with db() as conn:
         update_id = public_id('UPD')
@@ -3287,9 +3796,9 @@ def create_project_update() -> Response:
             )
         )
         
-        audit(conn, admin['id'], 'create', 'project_update', update_id, f"ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ ØªØ­Ø¯ÙŠØ«: {payload['title']}")
+        audit(conn, admin['id'], 'create', 'project_update', update_id, f"تم إنشاء تحديث: {payload['title']}")
         
-        return jsonify({"id": update_id, "message": "ØªÙ… Ø¥Ø¶Ø§ÙØ© Ø§Ù„ØªØ­Ø¯ÙŠØ« Ø¨Ù†Ø¬Ø§Ø­"})
+        return jsonify({"id": update_id, "message": "تم إضافة التحديث بنجاح"})
 
 @app.patch("/api/admin/project-updates/<update_id>")
 def update_project_update(update_id: str) -> Response:
@@ -3304,7 +3813,7 @@ def update_project_update(update_id: str) -> Response:
         # Check if update exists
         existing = conn.execute("SELECT * FROM project_updates WHERE id = ?", (update_id,)).fetchone()
         if not existing:
-            return jsonify({"error": "Ø§Ù„ØªØ­Ø¯ÙŠØ« ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯"}), 404
+            return jsonify({"error": "التحديث غير موجود"}), 404
         
         # Update fields
         update_fields = []
@@ -3322,9 +3831,9 @@ def update_project_update(update_id: str) -> Response:
                 update_values
             )
             
-            audit(conn, admin['id'], 'update', 'project_update', update_id, f"ØªÙ… ØªØ¹Ø¯ÙŠÙ„ ØªØ­Ø¯ÙŠØ«: {payload.get('title', existing['title'])}")
+            audit(conn, admin['id'], 'update', 'project_update', update_id, f"تم تعديل تحديث: {payload.get('title', existing['title'])}")
         
-        return jsonify({"message": "ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„ØªØ­Ø¯ÙŠØ« Ø¨Ù†Ø¬Ø§Ø­"})
+        return jsonify({"message": "تم تعديل التحديث بنجاح"})
 
 @app.delete("/api/admin/project-updates/<update_id>")
 def delete_project_update(update_id: str) -> Response:
@@ -3337,13 +3846,13 @@ def delete_project_update(update_id: str) -> Response:
         # Check if update exists
         existing = conn.execute("SELECT title FROM project_updates WHERE id = ?", (update_id,)).fetchone()
         if not existing:
-            return jsonify({"error": "Ø§Ù„ØªØ­Ø¯ÙŠØ« ØºÙŠØ± Ù…ÙˆØ¬ÙˆØ¯"}), 404
+            return jsonify({"error": "التحديث غير موجود"}), 404
         
         conn.execute("DELETE FROM project_updates WHERE id = ?", (update_id,))
         
-        audit(conn, admin['id'], 'delete', 'project_update', update_id, f"ØªÙ… Ø­Ø°Ù ØªØ­Ø¯ÙŠØ«: {existing['title']}")
+        audit(conn, admin['id'], 'delete', 'project_update', update_id, f"تم حذف تحديث: {existing['title']}")
         
-        return jsonify({"message": "ØªÙ… Ø­Ø°Ù Ø§Ù„ØªØ­Ø¯ÙŠØ« Ø¨Ù†Ø¬Ø§Ø­"})
+        return jsonify({"message": "تم حذف التحديث بنجاح"})
 
 @app.post("/api/admin/project-updates/<update_id>/publish")
 def publish_project_update(update_id: str) -> Response:
@@ -3358,9 +3867,9 @@ def publish_project_update(update_id: str) -> Response:
             (now_iso(), update_id)
         )
         
-        audit(conn, admin['id'], 'publish', 'project_update', update_id, "ØªÙ… Ù†Ø´Ø± Ø§Ù„ØªØ­Ø¯ÙŠØ«")
+        audit(conn, admin['id'], 'publish', 'project_update', update_id, "تم نشر التحديث")
         
-        return jsonify({"message": "ØªÙ… Ù†Ø´Ø± Ø§Ù„ØªØ­Ø¯ÙŠØ« Ø¨Ù†Ø¬Ø§Ø­"})
+        return jsonify({"message": "تم نشر التحديث بنجاح"})
 
 @app.post("/api/admin/project-updates/<update_id>/unpublish")
 def unpublish_project_update(update_id: str) -> Response:
@@ -3375,9 +3884,9 @@ def unpublish_project_update(update_id: str) -> Response:
             (now_iso(), update_id)
         )
         
-        audit(conn, admin['id'], 'unpublish', 'project_update', update_id, "ØªÙ… Ø¥Ù„ØºØ§Ø¡ Ù†Ø´Ø± Ø§Ù„ØªØ­Ø¯ÙŠØ«")
+        audit(conn, admin['id'], 'unpublish', 'project_update', update_id, "تم إلغاء نشر التحديث")
         
-        return jsonify({"message": "ØªÙ… Ø¥Ù„ØºØ§Ø¡ Ù†Ø´Ø± Ø§Ù„ØªØ­Ø¯ÙŠØ« Ø¨Ù†Ø¬Ø§Ø­"})
+        return jsonify({"message": "تم إلغاء نشر التحديث بنجاح"})
 
 @app.post("/api/admin/uploads/project-update-media")
 def upload_project_update_media() -> Response:
@@ -3388,19 +3897,19 @@ def upload_project_update_media() -> Response:
 
     uploaded = request.files.get("file")
     if not uploaded or not uploaded.filename:
-        return jsonify({"error": "validation", "message": "ÙŠØ±Ø¬Ù‰ Ø§Ø®ØªÙŠØ§Ø± ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆ."}), 400
+        return jsonify({"error": "validation", "message": "يرجى اختيار صورة أو فيديو."}), 400
 
     original_name = secure_filename(uploaded.filename)
     extension = Path(original_name).suffix.lower().lstrip(".")
     if extension not in ALLOWED_UPDATE_EXTENSIONS:
-        return jsonify({"error": "validation", "message": "Ù†ÙˆØ¹ Ø§Ù„Ù…Ù„Ù ØºÙŠØ± Ù…Ø³Ù…ÙˆØ­. Ø§Ù„ØµÙŠØº Ø§Ù„Ù…Ø³Ù…ÙˆØ­Ø©: jpg, jpeg, png, webp, mp4, webm."}), 400
+        return jsonify({"error": "validation", "message": "نوع الملف غير مسموح. الصيغ المسموحة: jpg, jpeg, png, webp, mp4, webm."}), 400
 
     uploaded.stream.seek(0, os.SEEK_END)
     size = uploaded.stream.tell()
     uploaded.stream.seek(0)
     max_size = MAX_UPDATE_UPLOAD_MB * 1024 * 1024
     if size > max_size:
-        return jsonify({"error": "validation", "message": f"Ø­Ø¬Ù… Ø§Ù„Ù…Ù„Ù Ø£ÙƒØ¨Ø± Ù…Ù† Ø§Ù„Ø­Ø¯ Ø§Ù„Ù…Ø³Ù…ÙˆØ­ ({MAX_UPDATE_UPLOAD_MB}MB)."}), 400
+        return jsonify({"error": "validation", "message": f"حجم الملف أكبر من الحد المسموح ({MAX_UPDATE_UPLOAD_MB}MB)."}), 400
 
     media_type = "video" if extension in {"mp4", "webm"} else "image"
     upload_dir = UPLOAD_DIR / "project-updates"
@@ -3411,8 +3920,8 @@ def upload_project_update_media() -> Response:
 
     file_url = f"/uploads/project-updates/{filename}"
     with db() as conn:
-        audit(conn, admin["id"], "upload", "project_update_media", None, f"ØªÙ… Ø±ÙØ¹ Ù…Ù„Ù {media_type}", None, {"url": file_url})
-    return jsonify({"url": file_url, "mediaType": media_type, "message": "ØªÙ… Ø±ÙØ¹ Ø§Ù„Ù…Ù„Ù Ø¨Ù†Ø¬Ø§Ø­"})
+        audit(conn, admin["id"], "upload", "project_update_media", None, f"تم رفع ملف {media_type}", None, {"url": file_url})
+    return jsonify({"url": file_url, "mediaType": media_type, "message": "تم رفع الملف بنجاح"})
 
 if __name__ == "__main__":
     init_db()

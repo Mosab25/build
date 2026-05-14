@@ -72,7 +72,7 @@ function renderApartmentsTable(apartments, showStatus = true) {
   return `
     <div class="table-wrap"><table>
       <thead><tr><th>الوحدة</th><th>الدور</th><th>المساحة</th><th>الاتجاه</th>${showStatus ? "<th>الحالة</th>" : ""}</tr></thead>
-      <tbody>${apartments.map((apt) => `<tr><td>${escapeHTML(apt.unitCode)}</td><td>${apt.floorNumber}</td><td>${apt.area} م²</td><td>${escapeHTML(apt.directionAr)}</td>${showStatus ? `<td>${StatusBadge(apt.status)}</td>` : ""}</tr>`).join("")}</tbody>
+      <tbody>${apartments.map((apt) => `<tr><td data-label="الوحدة">${escapeHTML(apt.unitCode)}</td><td data-label="الدور">${apt.floorNumber}</td><td data-label="المساحة">${apt.area} م²</td><td data-label="الاتجاه">${escapeHTML(apt.directionAr)}</td>${showStatus ? `<td data-label="الحالة">${StatusBadge(apt.status)}</td>` : ""}</tr>`).join("")}</tbody>
     </table></div>
   `;
 }
@@ -125,14 +125,14 @@ function renderClientsTable(clients) {
     <div class="table-wrap"><table>
       <thead><tr><th>اسم العميل</th><th>كود الحجز</th><th>الوحدات</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الدفع</th><th>إجراءات</th></tr></thead>
       <tbody>${groups.map((group) => `<tr>
-        <td>${escapeHTML(group.name)}</td>
-        <td>${escapeHTML(group.code)}</td>
-        <td>${escapeHTML(group.units.join(" - "))}</td>
-        <td>${formatMoney(group.totalAmount)}</td>
-        <td>${formatMoney(group.paidAmount)}</td>
-        <td>${formatMoney(group.remainingAmount)}</td>
-        <td>${StatusBadge(group.paymentStatus)}</td>
-        <td>
+        <td data-label="اسم العميل">${escapeHTML(group.name)}</td>
+        <td data-label="كود الحجز">${escapeHTML(group.code)}</td>
+        <td data-label="الوحدات">${escapeHTML(group.units.join(" - "))}</td>
+        <td data-label="الإجمالي" data-money>${formatMoney(group.totalAmount)}</td>
+        <td data-label="المدفوع" data-money>${formatMoney(group.paidAmount)}</td>
+        <td data-label="المتبقي" data-money>${formatMoney(group.remainingAmount)}</td>
+        <td data-label="الدفع">${StatusBadge(group.paymentStatus)}</td>
+        <td data-label="إجراءات" class="table-actions">
           <button class="btn ghost small" data-client-payment="${group.ids[0]}" type="button">دفعة</button>
           <button class="btn secondary small" data-client-add-unit="${group.ids[0]}" type="button">إضافة شقة أخرى</button>
           <button class="btn danger small" data-client-delete-group="${escapeHTML(group.ids.join(","))}" data-client-name="${escapeHTML(group.name)}" type="button">حذف</button>

@@ -8,7 +8,14 @@ async function initApp() {
   initGallery();
   initLatestUpdates();
   await initPublicHome();
-  await restoreSession();
+  if (shouldRestoreDashboardSession()) {
+    await restoreSession();
+  }
+}
+
+function shouldRestoreDashboardSession() {
+  const params = new URLSearchParams(window.location.search);
+  return window.location.hash === "#dashboard" || params.has("dashboard");
 }
 
 document.addEventListener("DOMContentLoaded", initApp);

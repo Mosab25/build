@@ -24,6 +24,10 @@ function renderDashboardNav(role) {
           ["settings", "بيانات الدخول"],
         ];
 
+  if (role === "admin" || role === "owner") {
+    navItems.splice(2, 0, ["newDeal", "إنشاء ديل"], ["deals", "الديلات"]);
+  }
+
   qs("#dashboardNav").innerHTML = navItems.map(([key, label]) => `
     <button type="button" data-dashboard-view="${key}" class="${APP_STATE.activeDashboardView === key ? "active" : ""}">${label}</button>
   `).join("");
@@ -64,6 +68,16 @@ function renderActiveDashboardView() {
   }
 
   if (role === "owner") {
+    if (view === "newDeal") {
+      content.innerHTML = renderAssistantDealWizard();
+      bindAssistantDealWizard();
+      return;
+    }
+    if (view === "deals") {
+      content.innerHTML = `<section class="data-panel"><div class="dashboard-topbar"><div><span class="eyebrow">الديلات</span><h3>إدارة الديلات</h3></div></div>${renderDealsList(APP_STATE.dashboard.deals || [], "owner")}</section>`;
+      bindDashboardActions();
+      return;
+    }
     if (view === "approvals") {
       content.innerHTML = renderOwnerApprovalCenter();
       bindOwnerApprovalCenter();
@@ -91,6 +105,18 @@ function renderActiveDashboardView() {
     }
     content.innerHTML = renderOwnerDashboard();
     bindOwnerDashboard();
+    return;
+  }
+
+  if (view === "newDeal") {
+    content.innerHTML = renderAssistantDealWizard();
+    bindAssistantDealWizard();
+    return;
+  }
+
+  if (view === "deals") {
+    content.innerHTML = `<section class="data-panel"><div class="dashboard-topbar"><div><span class="eyebrow">الديلات</span><h3>إدارة الديلات</h3></div></div>${renderDealsList(APP_STATE.dashboard.deals || [], "admin")}</section>`;
+    bindDashboardActions();
     return;
   }
 
