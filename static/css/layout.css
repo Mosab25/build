@@ -489,3 +489,44 @@
     font-size: 0.98rem;
   }
 }
+
+@media (max-width: 768px) {
+  body { overflow-x: hidden; }
+  .desktop-only { display: none !important; }
+  .mobile-only { display: block !important; }
+  .nav-shell { justify-content: space-between; }
+  .nav-actions { flex-direction: row-reverse; }
+  .nav-admin-button { display: none !important; }
+  .nav-links a { justify-content: center; }
+
+  .section, .container, .client-portal, .dashboard-content {
+    width: 100%;
+    max-width: 100%;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .grid, .stats-grid, .cards-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .button-row, .actions, .hero-actions, .contact-actions {
+    flex-direction: column;
+  }
+
+  .button-row button, .actions button, .hero-actions a, .contact-actions a {
+    width: 100%;
+    text-align: center;
+  }
+
+  .hero-content p.desktop-only { display: none !important; }
+  .update-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .update-text.expanded {
+    display: block;
+  }
+}

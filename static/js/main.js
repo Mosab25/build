@@ -7,9 +7,9 @@ async function initApp() {
   initClientPortal();
   initGallery();
   initLatestUpdates();
-  await initPublicHome();
+  initPublicHome();
   if (shouldRestoreDashboardSession()) {
-    await restoreSession();
+    restoreSession();
   }
 }
 

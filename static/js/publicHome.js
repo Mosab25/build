@@ -1,9 +1,9 @@
 async function initPublicHome() {
+  initProjectCountdown();
   try {
     const overview = await PublicAPI.overview();
     APP_STATE.overview = overview;
     applyOfficeSettings(overview.settings || {});
-    initProjectCountdown();
     renderPublicStats(overview.summary || {});
     renderAvailabilityOverview(overview.apartments || []);
   } catch (error) {
@@ -20,14 +20,25 @@ function applyOfficeSettings(settings) {
   qs("#publicPhone").href = `tel:+2${APP_CONFIG.officePhone}`;
 }
 
-const PROJECT_DELIVERY_TARGET = new Date("2026-11-13T00:00:00+02:00");
+const PROJECT_DELIVERY_TARGET = new Date("2026-11-13T00:00:00");
 
 function initProjectCountdown() {
   const target = qs("#projectCountdown");
   if (!target) return;
 
   const render = () => {
-    const remaining = Math.max(0, PROJECT_DELIVERY_TARGET.getTime() - Date.now());
+    const remaining = PROJECT_DELIVERY_TARGET.getTime() - Date.now();
+    if (remaining <= 0) {
+      target.innerHTML = `
+        <div>
+          <span class="eyebrow">حالة المشروع</span>
+          <strong>تم الوصول إلى موعد التسليم المتوقع</strong>
+        </div>
+      `;
+      window.clearInterval(APP_STATE.projectCountdownTimer);
+      return;
+    }
+
     const totalSeconds = Math.floor(remaining / 1000);
     const days = Math.floor(totalSeconds / 86400);
     const hours = Math.floor((totalSeconds % 86400) / 3600);
@@ -92,7 +103,7 @@ function renderApartmentModels() {
   if (!target) return;
   target.innerHTML = APARTMENT_MODELS.map((model) => `
     <article class="model-card">
-      <img src="${model.src}" alt="${escapeHTML(model.alt)}" />
+      <img src="${model.src}" alt="${escapeHTML(model.alt)}" loading="lazy" decoding="async" onerror="this.style.display='none'" />
       <div class="model-card-body">
         <span class="eyebrow">Type ${model.apartmentType}</span>
         <h3>${escapeHTML(model.title)}</h3>

@@ -33,6 +33,7 @@
           <a href="#gallery">المعرض</a>
           <a href="#updates">التحديثات</a>
           <a href="#client-access">بيانات الحجز</a>
+          <a href="#" class="mobile-only" onclick="qs('#staffLoginModal').hidden = false; qs('#navLinks').classList.remove('open'); return false;">لوحة التحكم</a>
         </div>
         <div class="nav-actions">
           <button class="btn primary small nav-admin-button" id="openStaffLogin" type="button">لوحة التحكم</button>
@@ -44,16 +45,18 @@
     <main id="home">
       <section class="hero-section">
         <div class="hero-visual">
-          <img src="media/facade.jpg" alt="واجهة مشروع أرض عبدالجليل" />
+          <img src="media/facade.jpg" alt="واجهة مشروع أرض عبدالجليل" loading="lazy" decoding="async" onerror="this.style.display='none'" />
         </div>
         <div class="hero-content">
-          <span class="eyebrow">متابعة الحجوزات والسداد</span>
-          <h1>منصة تشغيل عقاري موثوقة لمشروع أرض عبدالجليل</h1>
-          <p>واجهة واحدة للعملاء والإدارة والمساعدين لمتابعة الوحدات، الحجوزات، المدفوعات، الأقساط، وتحديثات المشروع المنشورة.</p>
-          <a class="hero-overview-link" href="#overview">نظرة تشغيلية على حالة الوحدات</a>
+          <span class="eyebrow desktop-only">متابعة الحجوزات والسداد</span>
+          <h1 class="desktop-only">منصة تشغيل عقاري موثوقة لمشروع أرض عبدالجليل</h1>
+          <p class="desktop-only">واجهة واحدة للعملاء والإدارة والمساعدين لمتابعة الوحدات، الحجوزات، المدفوعات، الأقساط، وتحديثات المشروع المنشورة.</p>
+          <h1 class="mobile-only" style="display:none; font-size:1.6rem; margin-bottom: 8px;">منصة عقارية موثوقة لمتابعة مشروع أرض عبدالجليل</h1>
+          <p class="mobile-only" style="display:none;">تابع حالة الحجز، المدفوعات، والتحديثات بسهولة من مكان واحد.</p>
+          <a class="hero-overview-link desktop-only" href="#overview">نظرة تشغيلية على حالة الوحدات</a>
           <div class="hero-actions">
-            <a class="btn primary" href="#client-access">الدخول ببيانات الحجز</a>
-            <a class="btn secondary" href="#gallery">استعراض المعرض</a>
+            <a class="btn primary" href="#client-access">دخول بوابة العميل</a>
+            <a class="btn secondary" href="#overview">تصفح المشروع</a>
           </div>
           <div class="project-countdown" id="projectCountdown" aria-live="polite"></div>
         </div>

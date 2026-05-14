@@ -12,7 +12,10 @@ async function initLatestUpdates() {
       <article class="update-card">
         <span class="eyebrow">${formatDate(update.update_date)}</span>
         <h3>${escapeHTML(update.title)}</h3>
-        <p>${escapeHTML(update.description)}</p>
+        <div class="update-content">
+          <p class="update-text">${escapeHTML(update.description)}</p>
+          <button type="button" class="btn ghost small read-more-btn mobile-only" onclick="this.previousElementSibling.classList.toggle('expanded'); this.textContent = this.textContent === 'قراءة المزيد' ? 'عرض أقل' : 'قراءة المزيد'">قراءة المزيد</button>
+        </div>
         ${update.media_url ? renderUpdateMedia(update) : ""}
       </article>
     `).join("");
@@ -25,5 +28,5 @@ function renderUpdateMedia(update) {
   if (update.media_type === "video") {
     return `<video controls preload="metadata" muted playsinline style="width:100%;border-radius:8px"><source src="${update.media_url}" type="video/mp4" /></video>`;
   }
-  return `<img src="${update.media_url}" alt="${escapeHTML(update.title)}" style="width:100%;border-radius:8px" />`;
+  return `<img src="${update.media_url}" alt="${escapeHTML(update.title)}" style="width:100%;border-radius:8px" loading="lazy" decoding="async" onerror="this.style.display='none'" />`;
 }
