@@ -100,6 +100,50 @@ python scripts/prepare_production.py && gunicorn server:app
 
 > غيّر بيانات الدخول الافتراضية مباشرة بعد أول تسجيل دخول على بيئة الإنتاج.
 
+## Render - إعداد خطة مجانية باستخدام متغيرات البيئة
+
+إذا كنت تستخدم خطة Render مجانية بدون Shell access، استخدم bootstrap environment variables لإنشاء حساب المالك تلقائيًا:
+
+### الخطوات:
+
+1. في Render أضف متغيرات البيئة التالية بالإضافة إلى المتغيرات أعلاه:
+
+```text
+BOOTSTRAP_OWNER=true
+OWNER_EMAIL=mosabhassan025@gmail.com
+OWNER_PASSWORD=<strong-password-from-render-env>
+OWNER_NAME=مصعب حسن
+```
+
+2. استخدم **Start Command** المرة واحدة فقط:
+
+```text
+python scripts/prepare_production.py && gunicorn server:app
+```
+
+3. عند التشغيل الأول:
+   - النظام سيقرأ `BOOTSTRAP_OWNER=true`
+   - سيتحقق من `OWNER_EMAIL` و `OWNER_PASSWORD`
+   - سينشئ أو يحدّث حساب المالك برقم `OWNER_EMAIL`
+   - إذا كان الحساب موجودًا، سيحدّث كلمة المرور والبيانات
+   - لن يطبع كلمة المرور أو أي بيانات حساسة في السجلات
+
+### بعد أول تسجيل دخول ناجح:
+
+4. **أزل أو عطّل Bootstrap** بتعديل متغيرات البيئة في Render:
+   - أزل `BOOTSTRAP_OWNER` أو اضبطه إلى `false`
+   - هذا يضمن عدم استبدال حساب المالك في المرات القادمة
+
+5. غيّر كلمة المرور من داخل الواجهة (POST `/api/admin/change-password`)
+
+### ملاحظات أمان:
+
+- ✅ كلمة المرور لا تُطبع في السجلات
+- ✅ يتم تجزئتها بـ PBKDF2-SHA256 مع salt عشوائي
+- ✅ لا توجد نقاط نهاية عامة لـ bootstrap
+- ✅ بيانات الدخول الافتراضية آمنة بعد إزالة `BOOTSTRAP_OWNER`
+- ❌ تأكد من عدم حفظ `OWNER_PASSWORD` أو أي كلمات مرور في كود المشروع
+
 ## إعادة ضبط حساب المالك محليًا
 
 لو بيانات الدخول لا تعمل على PostgreSQL أو أردت إعادة ضبط حساب المالك، استخدم:
