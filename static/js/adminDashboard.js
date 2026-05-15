@@ -198,19 +198,30 @@ function bindAdminDashboard() {
     await ensureDashboardData(["clients", "apartments"], APP_STATE.activeDashboardView);
     openPaymentForm();
   });
-  qsa("[data-client-view]").forEach((button) => button.addEventListener("click", () => openClientView(button.dataset.clientView)));
-  qsa("[data-client-payment]").forEach((button) => button.addEventListener("click", () => openPaymentForm(button.dataset.clientPayment)));
-  qsa("[data-client-more]").forEach((button) => button.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const clientIds = button.dataset.clientMore.split(",");
-    const clientName = button.dataset.clientName;
-    openClientMoreMenu(button, clientIds, clientName);
-  }));
-  qsa("[data-client-add-unit]").forEach((button) => button.addEventListener("click", () => openClientFormForExistingClient(button.dataset.clientAddUnit)));
-  qsa("[data-apartment-id]").forEach((button) => button.addEventListener("click", () => openClientFormFromApartment(button.dataset.apartmentId)));
   qs("#newClientButton")?.addEventListener("click", async () => {
     await ensureDashboardData(["apartments"], APP_STATE.activeDashboardView);
     openClientForm();
+  });
+
+  // Use event delegation for dynamically loaded client table buttons
+  qs("#dashboardContent")?.addEventListener("click", (event) => {
+    const target = event.target.closest("button");
+    if (!target) return;
+
+    if (target.dataset.clientView) {
+      openClientView(target.dataset.clientView);
+    } else if (target.dataset.clientPayment) {
+      openPaymentForm(target.dataset.clientPayment);
+    } else if (target.dataset.clientMore) {
+      event.stopPropagation();
+      const clientIds = target.dataset.clientMore.split(",");
+      const clientName = target.dataset.clientName;
+      openClientMoreMenu(target, clientIds, clientName);
+    } else if (target.dataset.clientAddUnit) {
+      openClientFormForExistingClient(target.dataset.clientAddUnit);
+    } else if (target.dataset.apartmentId) {
+      openClientFormFromApartment(target.dataset.apartmentId);
+    }
   });
 }
 
