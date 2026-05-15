@@ -55,7 +55,7 @@ function renderOwnerDashboard() {
 
     <section class="owner-quick-actions" aria-label="اختصارات لوحة المالك">
       ${OwnerQuickAction("الموافقات", "راجع الديلات المنتظرة", summary.pendingDeals || 0, "approvals", "warning")}
-      ${OwnerQuickAction("العملاء", "افتح ملفات العملاء والحجوزات", (data.clients || []).length, "operations", "clients")}
+      ${OwnerQuickAction("العملاء", "افتح ملفات العملاء والحجوزات", summary.totalClients || 0, "operations", "clients")}
       ${OwnerQuickAction("الشقق", "تابع المتاح والمحجوز والمباع", summary.availableApartments || 0, "operations", "units")}
       ${OwnerQuickAction("المدفوعات", "راجع التحصيل والدفعات المعلقة", summary.pendingPayments || 0, "operations", "payments")}
     </section>
@@ -467,7 +467,17 @@ function ownerClientGroups() {
   for (const client of ownerData().clients || []) {
     const key = client.portfolioCode || client.code || client.id;
     if (!groups.has(key)) {
-      groups.set(key, { ...client, ids: [], units: [], apartments: [], totalAmount: 0, paidAmount: 0, remainingAmount: 0 });
+      groups.set(key, {
+        ...client,
+        ids: [],
+        units: [],
+        apartments: [],
+        financialClientIds: new Set(),
+        totalAmount: 0,
+        paidAmount: 0,
+        remainingAmount: 0,
+        paymentStatuses: [],
+      });
     }
     const group = groups.get(key);
     group.ids.push(client.id);
@@ -478,15 +488,19 @@ function ownerClientGroups() {
         group.apartments.push(apt);
       }
     });
-    group.totalAmount += Number(client.totalAmount || 0);
-    group.paidAmount += Number(client.paidAmount || 0);
-    group.remainingAmount += Number(client.remainingAmount || 0);
-    if (client.paymentStatus === "Overdue") group.paymentStatus = "Overdue";
+    if (!group.financialClientIds.has(client.id)) {
+      group.financialClientIds.add(client.id);
+      group.totalAmount += Number(client.totalAmount || 0);
+      group.paidAmount += Number(client.paidAmount || 0);
+      group.remainingAmount += Number(client.remainingAmount || 0);
+      group.paymentStatuses.push(client.paymentStatus || "Pending");
+    }
   }
   for (const group of groups.values()) {
-    if (group.paymentStatus === "Overdue") continue;
-    if (group.totalAmount > 0 && group.remainingAmount <= 0) group.paymentStatus = "Fully Paid";
-    else if (group.paidAmount > 0) group.paymentStatus = "Partially Paid";
+    const states = group.paymentStatuses.map((status) => String(status || "").toLowerCase());
+    if (states.includes("overdue")) group.paymentStatus = "Overdue";
+    else if (states.length && states.every((status) => status === "fully paid" || status === "fully_paid")) group.paymentStatus = "Fully Paid";
+    else if (states.some((status) => status === "partially paid" || status === "partially_paid" || status === "fully paid" || status === "fully_paid")) group.paymentStatus = "Partially Paid";
     else group.paymentStatus = "Pending";
   }
   return Array.from(groups.values());
@@ -580,7 +594,7 @@ function renderOwnerBuildingMap() {
           ${["A", "B", "C"].map((type) => {
             const apt = apartments.find((item) => item.floorNumber === floor && item.apartmentType === type);
             const client = apt ? (ownerData().clients || []).find((item) => item.apartmentId === apt.id) : null;
-            const progress = client?.totalAmount ? (Number(client.paidAmount || 0) / Number(client.totalAmount || 1)) * 100 : 0;
+            const progress = Number(client?.paymentProgress ?? client?.payment_progress ?? 0);
             return apt ? `
               <button type="button" class="owner-unit-card status-${statusClass(apt.status)}" data-owner-apartment-edit="${apt.id}">
                 <header><strong>${escapeHTML(apt.unitCode)}</strong>${StatusBadge(apt.status)}</header>
@@ -654,25 +668,19 @@ function openOwnerClientMoreMenu(button, clientIds, clientName) {
   const dropdown = document.createElement("div");
   dropdown.className = "client-more-dropdown";
   dropdown.style.position = "absolute";
-  dropdown.style.zIndex = "1000";
-  dropdown.style.background = "white";
-  dropdown.style.border = "1px solid #ddd";
-  dropdown.style.borderRadius = "4px";
-  dropdown.style.padding = "8px 0";
-  dropdown.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)";
 
   const rect = button.getBoundingClientRect();
   dropdown.style.top = `${rect.bottom + window.scrollY + 4}px`;
   dropdown.style.left = `${rect.left + window.scrollX}px`;
   dropdown.innerHTML = `
-    <button class="dropdown-item" data-action="add-unit" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">إضافة شقة</button>
+    <button class="dropdown-item" data-action="add-unit" type="button">إضافة شقة</button>
     ${context.apartments.length > 0 ? `
-      <button class="dropdown-item" data-action="edit-price" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">تعديل سعر شقة</button>
+      <button class="dropdown-item" data-action="edit-price" type="button">تعديل سعر شقة</button>
     ` : ""}
-    <button class="dropdown-item" data-action="statement" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">كشف الحجز</button>
-    <button class="dropdown-item" data-action="whatsapp" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">واتساب</button>
-    <hr style="margin:8px 0;border:none;border-top:1px solid #eee;">
-    <button class="dropdown-item danger" data-action="cancel" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;color:#d32f2f;">إلغاء الحجز</button>
+    <button class="dropdown-item" data-action="statement" type="button">كشف الحجز</button>
+    <button class="dropdown-item" data-action="whatsapp" type="button">واتساب</button>
+    <hr class="dropdown-separator">
+    <button class="dropdown-item danger" data-action="cancel" type="button">إلغاء الحجز</button>
   `;
   document.body.appendChild(dropdown);
 
@@ -716,7 +724,6 @@ function openOwnerClientProfile(code) {
       <button class="btn ghost" type="button" data-profile-statement="${escapeHTML(client.id)}" data-client-code="${escapeHTML(client.code)}">كشف حساب</button>
       <button class="btn ghost" type="button" data-profile-whatsapp="${escapeHTML(client.phone || "")}">واتساب</button>
       <button class="btn danger" type="button" data-profile-cancel="${escapeHTML(client.ids.join(","))}" data-client-name="${escapeHTML(client.name)}">إلغاء الحجز</button>
-      <button class="btn danger" type="button" data-profile-delete="${escapeHTML(client.ids.join(","))}" data-client-name="${escapeHTML(client.name)}">حذف</button>
     </div>
   `);
   qs("[data-profile-payment]")?.addEventListener("click", (event) => openOwnerClientPayment(event.currentTarget.dataset.profilePayment));
@@ -724,7 +731,6 @@ function openOwnerClientProfile(code) {
   qs("[data-profile-statement]")?.addEventListener("click", (event) => downloadFile(ClientAPI.statementUrl(event.currentTarget.dataset.profileStatement, event.currentTarget.dataset.clientCode)));
   qs("[data-profile-whatsapp]")?.addEventListener("click", (event) => openOwnerWhatsapp(event.currentTarget.dataset.profileWhatsapp));
   qs("[data-profile-cancel]")?.addEventListener("click", (event) => cancelOwnerClientGroup(event.currentTarget.dataset.profileCancel, event.currentTarget.dataset.clientName));
-  qs("[data-profile-delete]")?.addEventListener("click", (event) => deleteOwnerClientGroup(event.currentTarget.dataset.profileDelete, event.currentTarget.dataset.clientName));
 }
 
 async function cancelOwnerClientGroup(clientIds, clientName) {

@@ -58,8 +58,8 @@ function renderAdminPaymentTable(payments) {
             const apartment = apartments.find((item) => item.id === payment.apartmentId) || client?.apartment;
             return `
               <tr>
-                <td data-label="العميل">${escapeHTML(client?.name || "-")}</td>
-                <td data-label="الشقة">${escapeHTML(apartment?.unitCode || "-")}</td>
+                <td data-label="العميل">${escapeHTML(payment.clientName || client?.name || "-")}</td>
+                <td data-label="الشقة">${escapeHTML(payment.unitCode || apartment?.unitCode || "-")}</td>
                 <td data-label="التاريخ">${formatDate(payment.date)}</td>
                 <td data-label="المبلغ" data-money>${formatMoney(payment.amount)}</td>
                 <td data-label="طريقة الدفع">${statusLabel(payment.method)}</td>
@@ -68,7 +68,7 @@ function renderAdminPaymentTable(payments) {
                 <td data-label="إجراءات" class="table-actions">
                   <button class="btn ghost small" data-payment-edit="${payment.id}" type="button">تعديل الدفعة</button>
                   <button class="btn secondary small" data-payment-receipt="${payment.id}" type="button">تحميل إيصال الدفع</button>
-                  <button class="btn danger small" data-payment-delete="${payment.id}" type="button">حذف الدفعة</button>
+                  <button class="btn danger small" data-payment-delete="${payment.id}" type="button">إلغاء الدفعة</button>
                 </td>
               </tr>
             `;
@@ -134,7 +134,7 @@ function renderAdminInstallmentsTable(installments) {
             const client = clients.find((entry) => entry.id === item.clientId);
             return `
               <tr>
-                <td data-label="العميل">${escapeHTML(client?.name || "-")}</td>
+                <td data-label="العميل">${escapeHTML(item.clientName || client?.name || "-")}</td>
                 <td data-label="رقم القسط">${Number(item.installmentNumber).toLocaleString("ar-EG")}</td>
                 <td data-label="تاريخ الاستحقاق">${formatDate(item.dueDate)}</td>
                 <td data-label="قيمة القسط" data-money>${formatMoney(item.amount)}</td>
@@ -144,7 +144,7 @@ function renderAdminInstallmentsTable(installments) {
                 <td data-label="ملاحظات">${escapeHTML(item.notes || "-")}</td>
                 <td data-label="إجراءات" class="table-actions">
                   <button class="btn ghost small" data-installment-edit="${item.id}" type="button">تعديل</button>
-                  <button class="btn danger small" data-installment-delete="${item.id}" type="button">حذف القسط</button>
+                  <button class="btn danger small" data-installment-delete="${item.id}" type="button">إلغاء القسط</button>
                 </td>
               </tr>
             `;
@@ -174,7 +174,17 @@ function bindInstallmentsPanel() {
   qsa("[data-installment-delete]").forEach((button) => button.addEventListener("click", () => deleteInstallment(button.dataset.installmentDelete)));
 }
 
-function openPaymentForm(clientId = "", payment = null) {
+async function ensureClientOptionsLoaded() {
+  if ((APP_STATE.dashboard.clients || []).length) return;
+  if (APP_STATE.session?.role === "owner") {
+    if (!isDashboardLoaded("ownerClients")) await ensureDashboardData(["ownerClients"], APP_STATE.activeDashboardView);
+    return;
+  }
+  if (!isDashboardLoaded("clients")) await ensureDashboardData(["clients"], APP_STATE.activeDashboardView);
+}
+
+async function openPaymentForm(clientId = "", payment = null) {
+  await ensureClientOptionsLoaded();
   const clients = APP_STATE.dashboard.clients || [];
   const selectedClientId = payment?.clientId || clientId;
   openModal(`
@@ -316,17 +326,20 @@ async function generateReceipt(paymentId) {
 }
 
 async function deletePayment(paymentId) {
+  const reason = prompt("اكتب سبب إلغاء الدفعة:");
+  if (!reason) return;
   if (!confirm("لا يمكن حذف هذه الدفعة بدون تأكيد. هل تريد حذفها؟")) return;
   try {
-    await AdminAPI.deletePayment(paymentId);
-    showToast("تم حذف الدفعة بنجاح.", "success");
+    await AdminAPI.deletePayment(paymentId, reason.trim());
+    showToast("تم إلغاء الدفعة بنجاح.", "success");
     await refreshPaymentsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الدفعات..." });
   } catch (error) {
     showToast(error.message, "error");
   }
 }
 
-function openInstallmentForm(installment = null) {
+async function openInstallmentForm(installment = null) {
+  await ensureClientOptionsLoaded();
   const clients = APP_STATE.dashboard.clients || [];
   openModal(`
     <span class="eyebrow">الأقساط</span>
@@ -398,7 +411,7 @@ async function deleteInstallment(installmentId) {
   if (!confirm("هل تريد حذف هذا القسط؟")) return;
   try {
     await AdminAPI.deleteInstallment(installmentId);
-    showToast("تم حذف القسط بنجاح.", "success");
+    showToast("تم إلغاء القسط بنجاح.", "success");
     await refreshInstallmentsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الأقساط..." });
   } catch (error) {
     showToast(error.message, "error");

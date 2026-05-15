@@ -74,7 +74,7 @@ function renderApartmentUnitsTable(units = []) {
 }
 
 function renderClientDashboard(client) {
-  const progress = client.totalAmount ? (client.paidAmount / client.totalAmount) * 100 : 0;
+  const progress = Number(client.paymentProgress ?? client.payment_progress ?? 0);
   const whatsappMessage = `مرحبًا، أريد الاستفسار عن الحجز الخاص بي. كود الحجز: ${client.code}`;
 
   qs("#clientDashboard").innerHTML = `

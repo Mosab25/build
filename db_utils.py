@@ -30,6 +30,7 @@ import psycopg2.pool
 
 POOL_MIN_CONNECTIONS = 1
 POOL_MAX_CONNECTIONS = 3
+SOLD_PAYMENT_THRESHOLD = 20_000
 _pool_lock = threading.Lock()
 _pool_semaphore = threading.BoundedSemaphore(POOL_MAX_CONNECTIONS)
 _connection_pool: psycopg2.pool.ThreadedConnectionPool | None = None
@@ -313,7 +314,7 @@ def status_title(value: str | None) -> str:
     mapping = {
         "available": "Available", "reserved": "Reserved", "sold": "Sold",
         "pending_payment": "Pending Payment", "pending_approval": "Pending Approval",
-        "pending": "Pending", "confirmed": "Confirmed", "cancelled": "Cancelled",
+        "pending": "Pending", "confirmed": "Confirmed", "cancelled": "Cancelled", "reversed": "Reversed",
         "partially_paid": "Partially Paid", "fully_paid": "Fully Paid",
         "overdue": "Overdue", "cash": "Cash", "bank_transfer": "Bank Transfer",
         "installment": "Installment", "office_payment": "Office Payment",
@@ -333,7 +334,7 @@ def status_db(value: str | None, kind: str) -> str:
                          "sold": "sold", "cancelled": "cancelled"},
         "payment": {"pending": "pending", "partially_paid": "partially_paid",
                      "fully_paid": "fully_paid", "overdue": "overdue"},
-        "payment_record": {"confirmed": "confirmed", "pending": "pending", "rejected": "rejected", "cancelled": "cancelled"},
+        "payment_record": {"confirmed": "confirmed", "pending": "pending", "rejected": "rejected", "cancelled": "cancelled", "reversed": "reversed"},
         "method": {"cash": "cash", "bank_transfer": "bank_transfer", "installment": "installment",
                     "office_payment": "office_payment", "other": "other"},
         "installment": {"upcoming": "upcoming", "due": "due", "paid": "paid",
@@ -465,14 +466,18 @@ def recalc_client(conn, client_id):
     paid = fetchval(conn,
         "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE client_id = %s AND payment_status = 'confirmed'",
         (client_id,)) or 0
-    # Prefer client_apartments sum when available
     try:
-        total_from_links = fetchval(conn, "SELECT COALESCE(SUM(unit_price), 0) FROM client_apartments WHERE client_id = %s AND status != 'cancelled'", (client_id,))
+        link_summary = fetchone(conn, "SELECT COUNT(*) AS count, COALESCE(SUM(unit_price), 0) AS total FROM client_apartments WHERE client_id = %s AND status != 'cancelled'", (client_id,))
     except Exception:
-        total_from_links = None
-    total = float(total_from_links) if total_from_links is not None else float(client.get("total_amount") or 0)
+        link_summary = None
+    link_count = int((link_summary or {}).get("count") or 0)
+    if link_count:
+        total = float((link_summary or {}).get("total") or 0)
+    elif client.get("apartment_id") or client["reservation_status"] == "cancelled":
+        total = float(client.get("total_amount") or 0)
+    else:
+        total = 0
     remaining = max(0, total - float(paid))
-    payment_progress = (float(paid) / total * 100) if total > 0 else 0
     overdue_count = fetchval(conn,
         "SELECT COUNT(*) FROM installments WHERE client_id = %s AND status = 'overdue' AND remaining_amount > 0",
         (client_id,)) or 0
@@ -484,10 +489,36 @@ def recalc_client(conn, client_id):
         payment_status = "fully_paid"
     else:
         payment_status = "partially_paid"
-    execute(conn,
-        "UPDATE clients SET total_amount = %s, paid_amount = %s, remaining_amount = %s, payment_status = %s, updated_at = %s WHERE id = %s",
-        (total, paid, remaining, payment_status, now_iso(), client_id))
+    next_reservation_status = None
+    if client["reservation_status"] != "cancelled":
+        next_reservation_status = "sold" if (total > 0 and float(paid) >= total) or float(paid) >= SOLD_PAYMENT_THRESHOLD else "reserved"
+    if next_reservation_status:
+        execute(conn,
+            "UPDATE clients SET total_amount = %s, paid_amount = %s, remaining_amount = %s, payment_status = %s, reservation_status = %s, updated_at = %s WHERE id = %s",
+            (total, paid, remaining, payment_status, next_reservation_status, now_iso(), client_id))
+    else:
+        execute(conn,
+            "UPDATE clients SET total_amount = %s, paid_amount = %s, remaining_amount = %s, payment_status = %s, updated_at = %s WHERE id = %s",
+            (total, paid, remaining, payment_status, now_iso(), client_id))
     sync_apartment_for_client(conn, client_id)
+
+
+def sync_apartment_status(conn, apartment_id):
+    apartment = fetchone(conn, "SELECT * FROM apartments WHERE id = %s", (apartment_id,))
+    if not apartment or apartment.get("status") == "frozen":
+        return
+    active = active_client_for_apartment(conn, apartment_id)
+    if active:
+        paid_amount = float(active.get("paid_amount") or 0)
+        total_amount = float(active.get("total_amount") or 0)
+        is_sold = active.get("reservation_status") == "sold" or active.get("payment_status") == "fully_paid" or paid_amount >= SOLD_PAYMENT_THRESHOLD or (total_amount > 0 and paid_amount >= total_amount)
+        execute(conn, "UPDATE apartments SET status = %s, assigned_client_id = %s, updated_at = %s WHERE id = %s", ("sold" if is_sold else "reserved", active["id"], now_iso(), apartment_id))
+        return
+    pending_deal = fetchone(conn, "SELECT id FROM deals WHERE apartment_id = %s AND status = 'pending_approval' LIMIT 1", (apartment_id,))
+    if pending_deal:
+        execute(conn, "UPDATE apartments SET status = %s, assigned_client_id = NULL, updated_at = %s WHERE id = %s", ("pending_approval", now_iso(), apartment_id))
+        return
+    execute(conn, "UPDATE apartments SET status = %s, assigned_client_id = NULL, updated_at = %s WHERE id = %s", ("available", now_iso(), apartment_id))
 
 
 def sync_apartment_for_client(conn, client_id):
@@ -497,44 +528,32 @@ def sync_apartment_for_client(conn, client_id):
     try:
         rows = fetchall(conn, "SELECT * FROM client_apartments WHERE client_id = %s AND status != 'cancelled'", (client_id,))
     except Exception:
-        # legacy single-apartment behavior
-        if not client.get("apartment_id"):
-            return
-        apartment_status = "available"
-        assigned_client_id = None
-        if client["reservation_status"] != "cancelled":
-            assigned_client_id = client["id"]
-            paid_amount = float(client.get("paid_amount") or 0)
-            if paid_amount >= SOLD_PAYMENT_THRESHOLD or client["payment_status"] == "fully_paid":
-                apartment_status = "sold"
-            elif client["payment_status"] in ("pending", "overdue"):
-                apartment_status = "pending_payment"
-            else:
-                apartment_status = "reserved"
-        execute(conn, "UPDATE apartments SET status = %s, assigned_client_id = %s, updated_at = %s WHERE id = %s", (apartment_status, assigned_client_id, now_iso(), client["apartment_id"]))
+        rows = []
+    if not rows and client.get("apartment_id"):
+        sync_apartment_status(conn, client["apartment_id"])
         return
     for row in rows:
-        apartment_status = "available"
-        assigned_client_id = None
-        if client["reservation_status"] != "cancelled":
-            assigned_client_id = client["id"]
-            paid_amount = float(client.get("paid_amount") or 0)
-            if paid_amount >= SOLD_PAYMENT_THRESHOLD or client["payment_status"] == "fully_paid":
-                apartment_status = "sold"
-            elif client["payment_status"] in ("pending", "overdue"):
-                apartment_status = "pending_payment"
-            else:
-                apartment_status = "reserved"
-        execute(conn, "UPDATE apartments SET status = %s, assigned_client_id = %s, updated_at = %s WHERE id = %s", (apartment_status, assigned_client_id, now_iso(), row["apartment_id"]))
-    # release apartments previously assigned to this client but no longer linked
-    execute(conn, "UPDATE apartments SET status = %s, assigned_client_id = NULL, updated_at = %s WHERE assigned_client_id = %s AND id NOT IN (SELECT apartment_id FROM client_apartments WHERE client_id = %s AND status != 'cancelled')", ("available", now_iso(), client_id, client_id))
+        sync_apartment_status(conn, row["apartment_id"])
+    released = fetchall(conn, "SELECT id FROM apartments WHERE assigned_client_id = %s AND id NOT IN (SELECT apartment_id FROM client_apartments WHERE client_id = %s AND status != 'cancelled')", (client_id, client_id))
+    for row in released:
+        sync_apartment_status(conn, row["id"])
 
 
 def active_client_for_apartment(conn, apartment_id, exclude_client_id=None):
     if exclude_client_id:
+        row = fetchone(conn,
+            "SELECT c.* FROM client_apartments ca JOIN clients c ON c.id = ca.client_id WHERE ca.apartment_id = %s AND ca.status != 'cancelled' AND c.reservation_status != 'cancelled' AND c.id != %s LIMIT 1",
+            (apartment_id, exclude_client_id))
+        if row:
+            return row
         return fetchone(conn,
             "SELECT * FROM clients WHERE apartment_id = %s AND reservation_status != 'cancelled' AND id != %s",
             (apartment_id, exclude_client_id))
+    row = fetchone(conn,
+        "SELECT c.* FROM client_apartments ca JOIN clients c ON c.id = ca.client_id WHERE ca.apartment_id = %s AND ca.status != 'cancelled' AND c.reservation_status != 'cancelled' LIMIT 1",
+        (apartment_id,))
+    if row:
+        return row
     return fetchone(conn,
         "SELECT * FROM clients WHERE apartment_id = %s AND reservation_status != 'cancelled'",
         (apartment_id,))

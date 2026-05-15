@@ -33,7 +33,6 @@ async function handleStaffLogin(event) {
       openMustChangePasswordDialog();
       return;
     }
-    renderActiveDashboardView();
     scheduleAfterFirstPaint(() => loadDashboard().catch((error) => showToast(error.message, "error")));
   } catch (error) {
     message.textContent = error.message || "يرجى مراجعة بيانات الدخول.";
@@ -53,7 +52,6 @@ async function restoreSession() {
       return;
     }
     showStaffApp();
-    renderActiveDashboardView();
     await loadDashboard();
   } catch {
     APP_STATE.session = null;
@@ -90,7 +88,7 @@ function openMustChangePasswordDialog() {
       });
       closeModal();
       showToast("تم تغيير كلمة المرور بنجاح.", "success");
-      await loadDashboard();
+      await loadDashboard({ force: true });
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -155,6 +153,11 @@ function initDashboardSession(admin, seed = {}) {
 async function loadDashboardSummary(force = false) {
   if (!APP_STATE.dashboard && APP_STATE.session) {
     initDashboardSession(APP_STATE.session);
+  }
+  if (APP_STATE.session?.role === "owner") {
+    if (!force && isDashboardLoaded("ownerSummary")) return;
+    await loadDashboardDataset("ownerSummary");
+    return;
   }
   if (!force && isDashboardLoaded("summary")) return;
   const result = await AdminAPI.dashboardSummary();
@@ -223,7 +226,8 @@ function activeDashboardDataKeys() {
   const view = APP_STATE.activeDashboardView;
   if (role === "assistant") {
     if (view === "newDeal" || view === "apartments") return ["apartments"];
-    return ["deals", "apartments"];
+    if (view === "deals") return ["deals"];
+    return [];
   }
   if (role === "owner") {
     if (view === "newDeal") return ["ownerApartments"];
@@ -245,10 +249,11 @@ function activeDashboardDataKeys() {
   if (view === "newDeal") return ["apartments"];
   if (view === "deals") return ["deals"];
   if (view === "settings") return ["settings"];
-  if (view === "payments") return ["payments", "clients", "apartments"];
-  if (view === "installments") return ["installments", "clients"];
+  if (view === "payments") return ["payments"];
+  if (view === "installments") return ["installments"];
   if (view === "updates") return ["updates"];
-  if (view === "operations") return ["clients", "apartments"];
+  if (view === "audit") return ["auditLogs"];
+  if (view === "operations") return ["clients"];
   return [];
 }
 
@@ -307,10 +312,10 @@ async function refreshClientsAfterChange(options = {}) {
 async function refreshClientsAfterPriceChange(options = {}) {
   const role = APP_STATE.session?.role;
   if (role === "owner") {
-    await refreshDashboardKeys(["ownerClients"], { summary: true, ...options });
+    await refreshDashboardKeys(["ownerClients", "ownerApartments"], { summary: true, ...options });
     return;
   }
-  await refreshDashboardKeys(["clients"], { summary: true, ...options });
+  await refreshDashboardKeys(["clients", "apartments"], { summary: true, ...options });
 }
 
 async function refreshPaymentsAfterChange(options = {}) {
@@ -335,7 +340,7 @@ async function refreshDealsAfterChange(options = {}) {
     await refreshDashboardKeys(["ownerDeals", "ownerApartments", "ownerClients"], { summary: true, ...options });
     return;
   }
-  await refreshDashboardKeys(["deals", "apartments"], { summary: true, ...options });
+  await refreshDashboardKeys(["deals", "clients", "apartments"], { summary: true, ...options });
 }
 
 async function ensureDashboardData(keys, viewName = APP_STATE.activeDashboardView) {
@@ -437,15 +442,17 @@ async function loadDashboardDataset(key) {
   }
   if (key === "ownerDeals") {
     const result = await OwnerAPI.deals();
-    APP_STATE.owner = { ...(APP_STATE.owner || {}), deals: result.deals || [] };
-    APP_STATE.dashboard.deals = result.deals || [];
+    APP_STATE.owner = { ...(APP_STATE.owner || {}), deals: result.items || [] };
+    APP_STATE.dashboard.deals = result.items || [];
+    APP_STATE.dashboard.dealsPagination = cacheListMeta(result);
     markDashboardLoaded(key);
     return;
   }
   if (key === "ownerClients") {
     const result = await OwnerAPI.clients();
-    APP_STATE.owner = { ...(APP_STATE.owner || {}), clients: result.clients || [] };
-    APP_STATE.dashboard.clients = result.clients || [];
+    APP_STATE.owner = { ...(APP_STATE.owner || {}), clients: result.items || [] };
+    APP_STATE.dashboard.clients = result.items || [];
+    APP_STATE.dashboard.clientsPagination = cacheListMeta(result);
     markDashboardLoaded(key);
     return;
   }
@@ -458,15 +465,17 @@ async function loadDashboardDataset(key) {
   }
   if (key === "ownerPayments") {
     const result = await OwnerAPI.payments();
-    APP_STATE.owner = { ...(APP_STATE.owner || {}), payments: result.payments || [] };
-    APP_STATE.dashboard.payments = result.payments || [];
+    APP_STATE.owner = { ...(APP_STATE.owner || {}), payments: result.items || [] };
+    APP_STATE.dashboard.payments = result.items || [];
+    APP_STATE.dashboard.paymentsPagination = cacheListMeta(result);
     markDashboardLoaded(key);
     return;
   }
   if (key === "ownerAudit") {
     const result = await OwnerAPI.auditLogs();
-    APP_STATE.owner = { ...(APP_STATE.owner || {}), auditLogs: result.auditLogs || [] };
-    APP_STATE.dashboard.auditLogs = result.auditLogs || [];
+    APP_STATE.owner = { ...(APP_STATE.owner || {}), auditLogs: result.items || [] };
+    APP_STATE.dashboard.auditLogs = result.items || [];
+    APP_STATE.dashboard.auditPagination = cacheListMeta(result);
     markDashboardLoaded(key);
     return;
   }

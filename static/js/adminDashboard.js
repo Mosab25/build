@@ -95,9 +95,11 @@ function buildPortfolioGroups(clients) {
         ids: [],
         units: [],
         apartments: [],
+        financialClientIds: new Set(),
         totalAmount: 0,
         paidAmount: 0,
         remainingAmount: 0,
+        paymentStatuses: [],
         paymentStatus: "Pending",
       });
     }
@@ -110,16 +112,19 @@ function buildPortfolioGroups(clients) {
       }
     });
     group.units.push(...(apartments.length ? apartments.map((apt) => apt.unitCode || "-") : ["-"]));
-    group.totalAmount += Number(client.totalAmount || 0);
-    group.paidAmount += Number(client.paidAmount || 0);
-    group.remainingAmount += Number(client.remainingAmount || 0);
-    const state = String(client.paymentStatus || "").toLowerCase();
-    if (state === "overdue") group.paymentStatus = "Overdue";
+    if (!group.financialClientIds.has(client.id)) {
+      group.financialClientIds.add(client.id);
+      group.totalAmount += Number(client.totalAmount || 0);
+      group.paidAmount += Number(client.paidAmount || 0);
+      group.remainingAmount += Number(client.remainingAmount || 0);
+      group.paymentStatuses.push(client.paymentStatus || "Pending");
+    }
   }
   for (const group of groups.values()) {
-    if (group.paymentStatus === "Overdue") continue;
-    if (group.totalAmount > 0 && group.remainingAmount <= 0) group.paymentStatus = "Fully Paid";
-    else if (group.paidAmount > 0) group.paymentStatus = "Partially Paid";
+    const states = group.paymentStatuses.map((status) => String(status || "").toLowerCase());
+    if (states.includes("overdue")) group.paymentStatus = "Overdue";
+    else if (states.length && states.every((status) => status === "fully paid" || status === "fully_paid")) group.paymentStatus = "Fully Paid";
+    else if (states.some((status) => status === "partially paid" || status === "partially_paid" || status === "fully paid" || status === "fully_paid")) group.paymentStatus = "Partially Paid";
     else group.paymentStatus = "Pending";
   }
   return Array.from(groups.values()).sort((a, b) => b.totalAmount - a.totalAmount);
@@ -202,7 +207,6 @@ function bindAdminDashboard() {
     openClientMoreMenu(button, clientIds, clientName);
   }));
   qsa("[data-client-add-unit]").forEach((button) => button.addEventListener("click", () => openClientFormForExistingClient(button.dataset.clientAddUnit)));
-  qsa("[data-client-delete-group]").forEach((button) => button.addEventListener("click", () => deleteClientGroup(button.dataset.clientDeleteGroup, button.dataset.clientName)));
   qsa("[data-apartment-id]").forEach((button) => button.addEventListener("click", () => openClientFormFromApartment(button.dataset.apartmentId)));
   qs("#newClientButton")?.addEventListener("click", async () => {
     await ensureDashboardData(["apartments"], APP_STATE.activeDashboardView);
@@ -272,26 +276,20 @@ function openClientMoreMenu(button, clientIds, clientName) {
   const dropdown = document.createElement("div");
   dropdown.className = "client-more-dropdown";
   dropdown.style.position = "absolute";
-  dropdown.style.zIndex = "1000";
-  dropdown.style.background = "white";
-  dropdown.style.border = "1px solid #ddd";
-  dropdown.style.borderRadius = "4px";
-  dropdown.style.padding = "8px 0";
-  dropdown.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)";
 
   const rect = button.getBoundingClientRect();
   dropdown.style.top = `${rect.bottom + window.scrollY + 4}px`;
   dropdown.style.left = `${rect.left + window.scrollX}px`;
 
   dropdown.innerHTML = `
-    <button class="dropdown-item" data-action="add-unit" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">إضافة شقة</button>
+    <button class="dropdown-item" data-action="add-unit" type="button">إضافة شقة</button>
     ${context.apartments.length > 0 ? `
-      <button class="dropdown-item" data-action="edit-price" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">تعديل سعر شقة</button>
+      <button class="dropdown-item" data-action="edit-price" type="button">تعديل سعر شقة</button>
     ` : ""}
-    <button class="dropdown-item" data-action="statement" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">كشف الحجز</button>
-    <button class="dropdown-item" data-action="whatsapp" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">واتساب</button>
-    <hr style="margin:8px 0;border:none;border-top:1px solid #eee;">
-    <button class="dropdown-item danger" data-action="cancel" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;color:#d32f2f;">إلغاء الحجز</button>
+    <button class="dropdown-item" data-action="statement" type="button">كشف الحجز</button>
+    <button class="dropdown-item" data-action="whatsapp" type="button">واتساب</button>
+    <hr class="dropdown-separator">
+    <button class="dropdown-item danger" data-action="cancel" type="button">إلغاء الحجز</button>
   `;
 
   document.body.appendChild(dropdown);
