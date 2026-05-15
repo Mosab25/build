@@ -4,7 +4,9 @@ const MEDIA_ASSETS = {
     type: "image",
     title: "واجهة المشروع",
     label: "واجهة المشروع",
-    src: "media/facade.jpg",
+    src: "media/optimized/facade.webp",
+    thumbSrc: "media/optimized/facade-thumb.webp",
+    originalSrc: "media/facade.jpg",
     alt: "واجهة مشروع أرض عبدالجليل",
   },
   apartment1: {
@@ -15,7 +17,9 @@ const MEDIA_ASSETS = {
     area: 137,
     direction: "بحري قبلي",
     apartmentType: "A",
-    src: "media/apartment-1.jpg",
+    src: "media/optimized/apartment-1.webp",
+    thumbSrc: "media/optimized/apartment-1-thumb.webp",
+    originalSrc: "media/apartment-1.jpg",
     alt: "شقة رقم 1 بمساحة 137 متر بحري قبلي",
   },
   apartment2: {
@@ -26,7 +30,9 @@ const MEDIA_ASSETS = {
     area: 125,
     direction: "بحري",
     apartmentType: "B",
-    src: "media/apartment-2.jpg",
+    src: "media/optimized/apartment-2.webp",
+    thumbSrc: "media/optimized/apartment-2-thumb.webp",
+    originalSrc: "media/apartment-2.jpg",
     alt: "شقة رقم 2 بمساحة 125 متر بحري",
   },
   apartment3: {
@@ -37,7 +43,9 @@ const MEDIA_ASSETS = {
     area: 120,
     direction: "قبلي",
     apartmentType: "C",
-    src: "media/apartment-3.jpg",
+    src: "media/optimized/apartment-3.webp",
+    thumbSrc: "media/optimized/apartment-3-thumb.webp",
+    originalSrc: "media/apartment-3.jpg",
     alt: "شقة رقم 3 بمساحة 120 متر قبلي",
   },
   projectVideo: {
@@ -46,7 +54,7 @@ const MEDIA_ASSETS = {
     title: "فيديو متابعة الإنشاء",
     label: "فيديو متابعة الإنشاء",
     src: "media/project-video.mp4",
-    poster: "media/facade.jpg",
+    poster: "media/optimized/facade-thumb.webp",
   },
 };
 

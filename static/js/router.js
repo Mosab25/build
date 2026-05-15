@@ -50,17 +50,28 @@ function renderActiveDashboardView() {
     return;
   }
 
+  const needsData = (keys) => {
+    const missing = keys.filter((key) => !isDashboardLoaded(key));
+    if (!missing.length) return false;
+    content.innerHTML = LoadingState();
+    ensureDashboardData(missing, view);
+    return true;
+  };
+
   if (role === "assistant") {
     if (view === "newDeal") {
+      if (needsData(["apartments"])) return;
       content.innerHTML = renderAssistantDealWizard();
       bindAssistantDealWizard();
       return;
     }
     if (view === "apartments") {
+      if (needsData(["apartments"])) return;
       content.innerHTML = `<section class="data-panel"><h3>الشقق المتاحة</h3>${renderApartmentsTable((APP_STATE.dashboard.apartments || []).filter((apt) => apt.status === "Available"), false)}</section>`;
       bindDashboardActions();
       return;
     }
+    if (needsData(["deals", "apartments"])) return;
     content.innerHTML = renderAssistantDashboard();
     bindAssistantDashboard();
     bindDashboardActions();
@@ -69,78 +80,107 @@ function renderActiveDashboardView() {
 
   if (role === "owner") {
     if (view === "newDeal") {
+      if (needsData(["ownerApartments"])) return;
       content.innerHTML = renderAssistantDealWizard();
       bindAssistantDealWizard();
       return;
     }
     if (view === "deals") {
+      if (needsData(["ownerDeals"])) return;
       content.innerHTML = `<section class="data-panel"><div class="dashboard-topbar"><div><span class="eyebrow">الديلات</span><h3>إدارة الديلات</h3></div></div>${renderDealsList(APP_STATE.dashboard.deals || [], "owner")}</section>`;
       bindDashboardActions();
       return;
     }
     if (view === "approvals") {
+      if (needsData(["ownerDeals"])) return;
       content.innerHTML = renderOwnerApprovalCenter();
       bindOwnerApprovalCenter();
       return;
     }
     if (view === "operations") {
+      const tab = APP_STATE.ownerOperationsTab || "clients";
+      if (tab === "clients" && needsData(["ownerClients"])) return;
+      if (tab === "units" && needsData(["ownerApartments"])) return;
+      if (tab === "payments" && needsData(["ownerPayments"])) return;
       content.innerHTML = renderOwnerOperations();
       bindOwnerOperations();
       return;
     }
     if (view === "settings") {
+      const tab = APP_STATE.ownerSettingsTab || "office";
+      const keys = ["ownerSettings"];
+      if (tab === "accounts" || tab === "permissions") keys.push("users");
+      if (needsData(keys)) return;
       content.innerHTML = renderOwnerSettings();
       bindOwnerSettings();
       return;
     }
     if (view === "updates") {
+      if (needsData(["updates"])) return;
       content.innerHTML = renderUpdatesAdminPanel();
       bindUpdatesAdminPanel();
       return;
     }
     if (view === "audit") {
+      if (needsData(["ownerAudit"])) return;
       content.innerHTML = renderOwnerAuditLog();
       bindOwnerAuditLog();
       return;
     }
+    if (needsData(["ownerSummary"])) return;
+    ensureDashboardData(["ownerAlerts", "ownerPerformance"], view);
     content.innerHTML = renderOwnerDashboard();
     bindOwnerDashboard();
     return;
   }
 
   if (view === "newDeal") {
+    if (needsData(["apartments"])) return;
     content.innerHTML = renderAssistantDealWizard();
     bindAssistantDealWizard();
     return;
   }
 
   if (view === "deals") {
+    if (needsData(["deals"])) return;
     content.innerHTML = `<section class="data-panel"><div class="dashboard-topbar"><div><span class="eyebrow">الديلات</span><h3>إدارة الديلات</h3></div></div>${renderDealsList(APP_STATE.dashboard.deals || [], "admin")}</section>`;
     bindDashboardActions();
     return;
   }
 
   if (view === "settings") {
+    if (needsData(["settings"])) return;
     content.innerHTML = renderSettingsPanel();
     bindSettingsForm();
     return;
   }
 
   if (view === "payments") {
+    if (needsData(["payments", "clients", "apartments"])) return;
     content.innerHTML = renderAdminPaymentsPanel();
     bindPaymentsPanel();
     return;
   }
 
   if (view === "installments") {
+    if (needsData(["installments", "clients"])) return;
     content.innerHTML = renderAdminInstallmentsPanel();
     bindInstallmentsPanel();
     return;
   }
 
   if (view === "updates") {
+    if (needsData(["updates"])) return;
     content.innerHTML = renderUpdatesAdminPanel();
     bindUpdatesAdminPanel();
+    return;
+  }
+
+  if (view === "operations") {
+    if (needsData(["clients", "apartments"])) return;
+    content.innerHTML = renderAdminDashboard();
+    bindAdminDashboard();
+    bindDashboardActions();
     return;
   }
 

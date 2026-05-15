@@ -7,13 +7,14 @@ import io
 import json
 import os
 import secrets
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, Response, jsonify, request, send_file, send_from_directory
+from flask import Flask, Response, g, jsonify, request, send_file, send_from_directory
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from openpyxl import Workbook
@@ -23,7 +24,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
-from db_utils import db, get_database_url
+from db_utils import db, get_database_url, get_db_connection as checkout_db_connection, release_db_connection
 from bootstrap_owner import bootstrap_owner_account
 
 try:
@@ -63,6 +64,39 @@ CLIENT_RATE_LIMIT_ATTEMPTS = 12
 app = Flask(__name__)
 app.config["SECRET_KEY"] = SECRET_KEY
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_DIR)
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31536000  # Cache static assets for faster repeat loads.
+
+PUBLIC_CACHE_TTL_SECONDS = 60
+public_response_cache: dict[str, tuple[float, Any]] = {}
+public_cache_lock = threading.Lock()
+
+
+def get_db_connection():
+    """Request-scoped checkout for raw DB use; teardown returns it to the shared pool."""
+    if "db_connection" not in g:
+        g.db_connection = checkout_db_connection()
+    return g.db_connection
+
+
+@app.teardown_appcontext
+def return_db_connection(_: BaseException | None = None) -> None:
+    """Return any request-scoped DB connection to the pool after Flask finishes the request."""
+    conn = g.pop("db_connection", None)
+    if conn is not None:
+        release_db_connection(conn)
+
+
+def cached_public_json(cache_key: str, loader, ttl: int = PUBLIC_CACHE_TTL_SECONDS) -> Response:
+    """Keep hot public responses in memory briefly so first paint is not blocked by repeated DB reads."""
+    now = time.time()
+    with public_cache_lock:
+        cached = public_response_cache.get(cache_key)
+        if cached and cached[0] > now:
+            return jsonify(cached[1])
+    payload = loader()
+    with public_cache_lock:
+        public_response_cache[cache_key] = (time.time() + ttl, payload)
+    return jsonify(payload)
 
 
 def env_flag(name: str, default: bool = False) -> bool:
@@ -70,6 +104,39 @@ def env_flag(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def request_page(default: int = 1) -> int:
+    try:
+        return max(1, int(request.args.get("page", default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def request_limit(default: int = 20, maximum: int = 100) -> int:
+    try:
+        return min(maximum, max(1, int(request.args.get("limit", default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def pagination_meta(total: int, page: int, limit: int) -> dict[str, int | bool]:
+    return {
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "hasMore": page * limit < total,
+    }
+
+
+def paginated_payload(key: str, items: list[Any], total: int, page: int, limit: int) -> dict[str, Any]:
+    meta = pagination_meta(total, page, limit)
+    return {
+        "items": items,
+        key: items,
+        **meta,
+        "pagination": meta,
+    }
 
 
 def ensure_runtime_directories() -> None:
@@ -631,10 +698,18 @@ def ensure_contracts_schema(conn) -> None:
 
 
 def ensure_runtime_indexes(conn) -> None:
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_client_code ON clients(client_code)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_national_id ON clients(national_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_apartment_id ON clients(apartment_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_deals_assistant_id ON deals(assistant_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_client_id ON payments(client_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_payment_date ON payments(payment_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_payment_status ON payments(payment_status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_installments_client_id ON installments(client_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_client_status ON payments(client_id, payment_status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_installments_client_status ON installments(client_id, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_installments_due_date ON installments(due_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_deals_status ON deals(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_updates_status ON project_updates(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)")
 
@@ -1067,6 +1142,48 @@ def client_payload(conn: Any, client: dict[str, Any], include_private: bool = Tr
     }
 
 
+def admin_client_list_payload(client: dict[str, Any], apartment: dict[str, Any] | None = None, location: str = "") -> dict[str, Any]:
+    portfolio_code = client["portfolio_code"] or client["client_code"]
+    return {
+        "id": client["id"],
+        "code": portfolio_code,
+        "portfolioCode": portfolio_code,
+        "reservationCode": normalize_display_text(client["client_code"]),
+        "name": normalize_display_text(client["full_name"]),
+        "phone": normalize_display_text(client["phone"]),
+        "email": normalize_display_text(client["email"]),
+        "nationalId": normalize_display_text(client["national_id"]),
+        "apartmentId": client["apartment_id"],
+        "reservationStatus": status_title(client["reservation_status"]),
+        "reservationDate": client["reservation_date"],
+        "expectedDeliveryDate": client["expected_delivery_date"],
+        "totalAmount": client["total_amount"],
+        "paidAmount": client["paid_amount"],
+        "remainingAmount": client["remaining_amount"],
+        "paymentStatus": status_title(client["payment_status"]),
+        "officeNotes": normalize_display_text(client["office_notes"]),
+        "apartment": apartment_payload(apartment, location=location) if apartment else None,
+    }
+
+
+def joined_apartment_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    if not row.get("apt_id"):
+        return None
+    return {
+        "id": row["apt_id"],
+        "unit_code": row["apt_unit_code"],
+        "floor_number": row["apt_floor_number"],
+        "apartment_type": row["apt_apartment_type"],
+        "area": row["apt_area"],
+        "direction_ar": row["apt_direction_ar"],
+        "direction_en": row["apt_direction_en"],
+        "price": row["apt_price"],
+        "status": row["apt_status"],
+        "assigned_client_id": row["apt_assigned_client_id"],
+        "notes": row["apt_notes"],
+    }
+
+
 def rows_for_portfolio_code(conn: Any, code: str) -> list[dict[str, Any]]:
     normalized = normalize_code(code)
     return conn.execute(
@@ -1143,7 +1260,7 @@ def portfolio_payload(conn: Any, rows: list[dict[str, Any]], include_private: bo
     }
 
 
-def apartment_payload(row: dict[str, Any] | dict[str, Any]) -> dict[str, Any]:
+def apartment_payload(row: dict[str, Any] | dict[str, Any], location: str | None = None) -> dict[str, Any]:
     return {
         "id": row["id"],
         "unitCode": row["unit_code"],
@@ -1156,7 +1273,7 @@ def apartment_payload(row: dict[str, Any] | dict[str, Any]) -> dict[str, Any]:
         "status": status_title(row["status"]),
         "assignedClientId": row["assigned_client_id"],
         "buildingName": "مشروع أرض عبدالجليل",
-        "location": get_setting("office_address"),
+        "location": location if location is not None else get_setting("office_address"),
         "notes": normalize_display_text(row["notes"]),
         "features": apartment_features(row["apartment_type"]),
     }
@@ -1171,7 +1288,7 @@ def apartment_features(apartment_type: str) -> list[str]:
 
 
 def payment_payload(row: dict[str, Any]) -> dict[str, Any]:
-    return {
+    payload = {
         "id": row["id"],
         "clientId": row["client_id"],
         "apartmentId": row["apartment_id"],
@@ -1184,10 +1301,15 @@ def payment_payload(row: dict[str, Any]) -> dict[str, Any]:
         "referenceNumber": normalize_display_text(row["reference_number"]),
         "notes": normalize_display_text(row["notes"]),
     }
+    if "client_name" in row:
+        payload["clientName"] = normalize_display_text(row["client_name"])
+    if "unit_code" in row:
+        payload["unitCode"] = normalize_display_text(row["unit_code"])
+    return payload
 
 
 def installment_payload(row: dict[str, Any]) -> dict[str, Any]:
-    return {
+    payload = {
         "id": row["id"],
         "clientId": row["client_id"],
         "apartmentId": row["apartment_id"],
@@ -1200,6 +1322,11 @@ def installment_payload(row: dict[str, Any]) -> dict[str, Any]:
         "paymentId": row["payment_id"],
         "notes": row["notes"],
     }
+    if "client_name" in row:
+        payload["clientName"] = normalize_display_text(row["client_name"])
+    if "unit_code" in row:
+        payload["unitCode"] = normalize_display_text(row["unit_code"])
+    return payload
 
 
 def deal_payload(conn: Any, row: dict[str, Any]) -> dict[str, Any]:
@@ -1667,12 +1794,18 @@ def clear_login_failures(identifier: str) -> None:
 
 @app.get("/")
 def index() -> Response:
-    return send_file(INDEX_PATH)
+    return send_file(INDEX_PATH, max_age=0)
 
 
 @app.get("/health")
 def health() -> Response:
-    return jsonify({"status": "ok"})
+    return cached_public_json("health", lambda: {"status": "ok"})
+
+
+@app.get("/ping")
+def ping() -> tuple[str, int]:
+    """Ultra-light keep-alive endpoint for uptime monitors; intentionally avoids the database."""
+    return "ok", 200
 
 
 @app.get("/api/health-db")
@@ -1697,11 +1830,12 @@ def generated(filename: str) -> Response:
 
 @app.get("/api/public/overview")
 def public_overview() -> Response:
-    with db() as conn:
-        apartments = [apartment_payload(row) for row in conn.execute("SELECT * FROM apartments ORDER BY floor_number, apartment_type").fetchall()]
-        settings = all_settings(conn)
-        return jsonify(
-            {
+    def load_public_overview() -> dict[str, Any]:
+        with db() as conn:
+            settings = all_settings(conn)
+            location = settings.get("office_address", "")
+            apartments = [apartment_payload(row, location=location) for row in conn.execute("SELECT * FROM apartments ORDER BY floor_number, apartment_type").fetchall()]
+            return {
                 "settings": {
                     "officeName": settings.get("office_name"),
                     "officePhone": settings.get("office_phone"),
@@ -1719,7 +1853,8 @@ def public_overview() -> Response:
                 },
                 "apartments": apartments,
             }
-        )
+
+    return cached_public_json("public_overview", load_public_overview)
 
 
 @app.get("/api/client/reservation/<code>")
@@ -1849,71 +1984,40 @@ def admin_bootstrap() -> Response:
     if not isinstance(admin, dict):
         return admin
     with db() as conn:
-        consolidate_client_portfolios(conn)
-        for client in conn.execute("SELECT id FROM clients").fetchall():
-            recalc_client(conn, client["id"])
-        apartments = [apartment_payload(row) for row in conn.execute("SELECT * FROM apartments ORDER BY floor_number, apartment_type").fetchall()]
-        clients = [client_payload(conn, row) for row in conn.execute("SELECT * FROM clients ORDER BY created_at DESC").fetchall()]
-        payments = [payment_payload(row) for row in conn.execute("SELECT * FROM payments ORDER BY payment_date DESC").fetchall()]
-        installments = [installment_payload(row) for row in conn.execute("SELECT * FROM installments ORDER BY due_date ASC").fetchall()]
-        logs = rows_to_dicts(
-            conn.execute(
-                """
-                SELECT audit_logs.*, admins.full_name AS admin_name
-                FROM audit_logs LEFT JOIN admins ON admins.id = audit_logs.admin_id
-                ORDER BY audit_logs.created_at DESC LIMIT 100
-                """
-            ).fetchall()
-        )
         settings = all_settings(conn)
-        if admin["role"] == "assistant":
-            deal_rows = conn.execute("SELECT * FROM deals WHERE assistant_id = ? ORDER BY created_at DESC", (admin["id"],)).fetchall()
-            clients = []
-            payments = []
-            installments = []
-            logs = []
-            users = []
-            contracts = []
-        else:
-            deal_rows = conn.execute("SELECT * FROM deals ORDER BY created_at DESC").fetchall()
-            user_filter = "" if admin["role"] == "owner" else "WHERE role != 'owner'"
-            users = [
-                admin_public_payload(row)
-                for row in conn.execute(
-                    f"SELECT id, full_name, email, role, phone, is_active, must_change_password, last_login_at, created_at FROM admins {user_filter} ORDER BY created_at DESC"
-                ).fetchall()
-            ]
-            contracts = [contract_payload(row) for row in conn.execute("SELECT * FROM contracts ORDER BY created_at DESC").fetchall()]
-        deals = [deal_payload(conn, row) for row in deal_rows]
-        pending_payments = conn.execute("SELECT COUNT(*) FROM payments WHERE payment_status = 'pending'").fetchone()[0]
-        overdue_clients = conn.execute("SELECT COUNT(*) FROM clients WHERE payment_status = 'overdue'").fetchone()[0]
-        upcoming_installments = conn.execute("SELECT COUNT(*) FROM installments WHERE status IN ('upcoming','due')").fetchone()[0]
-        pending_deals = conn.execute("SELECT COUNT(*) FROM deals WHERE status = 'pending_approval'").fetchone()[0]
         summary = {
-            "totalApartments": len(apartments),
-            "availableApartments": sum(1 for apt in apartments if apt["status"] == "Available"),
-            "reservedApartments": sum(1 for apt in apartments if apt["status"] in {"Reserved", "Pending Approval", "Pending Payment"}),
-            "soldApartments": sum(1 for apt in apartments if apt["status"] == "Sold"),
-            "totalCollected": sum(client["paidAmount"] for client in clients),
-            "totalRemaining": sum(client["remainingAmount"] for client in clients),
-            "overdueClients": overdue_clients,
-            "upcomingInstallments": upcoming_installments,
-            "pendingPayments": pending_payments,
-            "pendingDeals": pending_deals,
+            "totalClients": conn.execute("SELECT COUNT(*) FROM clients WHERE reservation_status != 'cancelled'").fetchone()[0],
+            "totalApartments": conn.execute("SELECT COUNT(*) FROM apartments").fetchone()[0],
+            "availableApartments": conn.execute("SELECT COUNT(*) FROM apartments WHERE status = 'available'").fetchone()[0],
+            "reservedApartments": conn.execute("SELECT COUNT(*) FROM apartments WHERE status IN ('reserved','pending_payment','pending_approval')").fetchone()[0],
+            "soldApartments": conn.execute("SELECT COUNT(*) FROM apartments WHERE status = 'sold'").fetchone()[0],
+            "pendingApproval": conn.execute("SELECT COUNT(*) FROM deals WHERE status = 'pending_approval'").fetchone()[0],
+            "totalSales": conn.execute("SELECT COALESCE(SUM(total_amount), 0) FROM clients WHERE reservation_status != 'cancelled'").fetchone()[0],
+            "totalPaid": conn.execute("SELECT COALESCE(SUM(paid_amount), 0) FROM clients WHERE reservation_status != 'cancelled'").fetchone()[0],
+            "totalCollected": conn.execute("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE payment_status = 'confirmed'").fetchone()[0],
+            "totalRemaining": conn.execute("SELECT COALESCE(SUM(remaining_amount), 0) FROM clients WHERE reservation_status != 'cancelled'").fetchone()[0],
+            "overdueInstallments": conn.execute("SELECT COUNT(*) FROM installments WHERE status = 'overdue' AND remaining_amount > 0").fetchone()[0],
+            "overdueClients": conn.execute("SELECT COUNT(*) FROM clients WHERE payment_status = 'overdue'").fetchone()[0],
+            "upcomingInstallments": conn.execute("SELECT COUNT(*) FROM installments WHERE status IN ('upcoming','due')").fetchone()[0],
+            "pendingPayments": conn.execute("SELECT COUNT(*) FROM payments WHERE payment_status = 'pending'").fetchone()[0],
+            "pendingDeals": conn.execute("SELECT COUNT(*) FROM deals WHERE status = 'pending_approval'").fetchone()[0],
         }
         return jsonify(
             {
                 "admin": admin_public_payload(admin),
                 "summary": summary,
-                "apartments": apartments,
-                "clients": clients,
-                "payments": payments,
-                "installments": installments,
-                "auditLogs": logs,
-                "settings": settings,
-                "users": users,
-                "deals": deals,
-                "contracts": contracts,
+                "settings": {
+                    "office_name": settings.get("office_name"),
+                    "office_phone": settings.get("office_phone"),
+                    "whatsapp_number": settings.get("whatsapp_number"),
+                    "office_address": settings.get("office_address"),
+                    "currency": settings.get("currency", "EGP"),
+                },
+                "rolePermissions": {
+                    "canManageUsers": can_manage_users(admin),
+                    "canManagePayments": admin["role"] in {"owner", "admin", "accountant"},
+                    "canManageDeals": admin["role"] in {"owner", "admin", "assistant"},
+                },
             }
         )
 
@@ -1924,16 +2028,18 @@ def admin_dashboard_summary() -> Response:
     if not isinstance(admin, dict):
         return admin
     with db() as conn:
-        consolidate_client_portfolios(conn)
-        for client in conn.execute("SELECT id FROM clients").fetchall():
-            recalc_client(conn, client["id"])
         summary = {
+            "totalClients": conn.execute("SELECT COUNT(*) FROM clients WHERE reservation_status != 'cancelled'").fetchone()[0],
             "totalApartments": conn.execute("SELECT COUNT(*) FROM apartments").fetchone()[0],
             "availableApartments": conn.execute("SELECT COUNT(*) FROM apartments WHERE status = 'available'").fetchone()[0],
             "reservedApartments": conn.execute("SELECT COUNT(*) FROM apartments WHERE status IN ('reserved','pending_payment','pending_approval')").fetchone()[0],
             "soldApartments": conn.execute("SELECT COUNT(*) FROM apartments WHERE status = 'sold'").fetchone()[0],
+            "pendingApproval": conn.execute("SELECT COUNT(*) FROM deals WHERE status = 'pending_approval'").fetchone()[0],
+            "totalSales": conn.execute("SELECT COALESCE(SUM(total_amount), 0) FROM clients WHERE reservation_status != 'cancelled'").fetchone()[0],
+            "totalPaid": conn.execute("SELECT COALESCE(SUM(paid_amount), 0) FROM clients WHERE reservation_status != 'cancelled'").fetchone()[0],
             "totalCollected": conn.execute("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE payment_status = 'confirmed'").fetchone()[0],
             "totalRemaining": conn.execute("SELECT COALESCE(SUM(remaining_amount), 0) FROM clients WHERE reservation_status != 'cancelled'").fetchone()[0],
+            "overdueInstallments": conn.execute("SELECT COUNT(*) FROM installments WHERE status = 'overdue' AND remaining_amount > 0").fetchone()[0],
             "overdueClients": conn.execute("SELECT COUNT(*) FROM clients WHERE payment_status = 'overdue'").fetchone()[0],
             "upcomingInstallments": conn.execute("SELECT COUNT(*) FROM installments WHERE status IN ('upcoming','due')").fetchone()[0],
             "pendingPayments": conn.execute("SELECT COUNT(*) FROM payments WHERE payment_status = 'pending'").fetchone()[0],
@@ -1947,8 +2053,9 @@ def list_admin_apartments() -> Response:
     if not isinstance(admin, dict):
         return admin
     with db() as conn:
+        settings = all_settings(conn)
         rows = conn.execute("SELECT * FROM apartments ORDER BY floor_number, apartment_type").fetchall()
-        return jsonify({"apartments": [apartment_payload(row) for row in rows]})
+        return jsonify({"apartments": [apartment_payload(row, location=settings.get("office_address", "")) for row in rows]})
 
 
 @app.post("/api/admin/apartments")
@@ -2003,12 +2110,35 @@ def list_admin_clients() -> Response:
     admin = require_admin()
     if not isinstance(admin, dict):
         return admin
+    page = request_page()
+    limit = request_limit()
+    offset = (page - 1) * limit
     with db() as conn:
-        consolidate_client_portfolios(conn)
-        for client in conn.execute("SELECT id FROM clients").fetchall():
-            recalc_client(conn, client["id"])
-        rows = conn.execute("SELECT * FROM clients ORDER BY created_at DESC").fetchall()
-        return jsonify({"clients": [client_payload(conn, row) for row in rows]})
+        total = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
+        settings = all_settings(conn)
+        rows = conn.execute(
+            """
+            SELECT clients.*,
+                   apartments.id AS apt_id,
+                   apartments.unit_code AS apt_unit_code,
+                   apartments.floor_number AS apt_floor_number,
+                   apartments.apartment_type AS apt_apartment_type,
+                   apartments.area AS apt_area,
+                   apartments.direction_ar AS apt_direction_ar,
+                   apartments.direction_en AS apt_direction_en,
+                   apartments.price AS apt_price,
+                   apartments.status AS apt_status,
+                   apartments.assigned_client_id AS apt_assigned_client_id,
+                   apartments.notes AS apt_notes
+            FROM clients
+            LEFT JOIN apartments ON apartments.id = clients.apartment_id
+            ORDER BY clients.created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        ).fetchall()
+        items = [admin_client_list_payload(row, joined_apartment_row(row), settings.get("office_address", "")) for row in rows]
+        return jsonify(paginated_payload("clients", items, total, page, limit))
 
 
 @app.post("/api/admin/clients")
@@ -2303,9 +2433,23 @@ def list_admin_payments() -> Response:
     admin = require_admin({"owner", "admin", "accountant", "viewer"})
     if not isinstance(admin, dict):
         return admin
+    page = request_page()
+    limit = request_limit()
+    offset = (page - 1) * limit
     with db() as conn:
-        rows = conn.execute("SELECT * FROM payments ORDER BY payment_date DESC, created_at DESC").fetchall()
-        return jsonify({"payments": [payment_payload(row) for row in rows]})
+        total = conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+        rows = conn.execute(
+            """
+            SELECT payments.*, clients.full_name AS client_name, apartments.unit_code
+            FROM payments
+            LEFT JOIN clients ON clients.id = payments.client_id
+            LEFT JOIN apartments ON apartments.id = payments.apartment_id
+            ORDER BY payments.payment_date DESC, payments.created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        ).fetchall()
+        return jsonify(paginated_payload("payments", [payment_payload(row) for row in rows], total, page, limit))
 
 
 @app.patch("/api/admin/payments/<payment_id>")
@@ -2444,11 +2588,23 @@ def list_admin_installments() -> Response:
     admin = require_admin({"owner", "admin", "accountant", "viewer"})
     if not isinstance(admin, dict):
         return admin
+    page = request_page()
+    limit = request_limit()
+    offset = (page - 1) * limit
     with db() as conn:
-        for client in conn.execute("SELECT id FROM clients").fetchall():
-            recalc_client(conn, client["id"])
-        rows = conn.execute("SELECT * FROM installments ORDER BY due_date ASC, installment_number ASC").fetchall()
-        return jsonify({"installments": [installment_payload(row) for row in rows]})
+        total = conn.execute("SELECT COUNT(*) FROM installments").fetchone()[0]
+        rows = conn.execute(
+            """
+            SELECT installments.*, clients.full_name AS client_name, apartments.unit_code
+            FROM installments
+            LEFT JOIN clients ON clients.id = installments.client_id
+            LEFT JOIN apartments ON apartments.id = installments.apartment_id
+            ORDER BY installments.due_date ASC, installments.installment_number ASC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        ).fetchall()
+        return jsonify(paginated_payload("installments", [installment_payload(row) for row in rows], total, page, limit))
 
 
 @app.patch("/api/admin/installments/<installment_id>")
@@ -2512,15 +2668,25 @@ def audit_logs() -> Response:
     admin = require_admin({"owner", "admin", "viewer", "accountant"})
     if not isinstance(admin, dict):
         return admin
+    page = request_page()
+    limit = request_limit()
+    offset = (page - 1) * limit
     with db() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0]
         rows = conn.execute(
             """
             SELECT audit_logs.*, admins.full_name AS admin_name
             FROM audit_logs LEFT JOIN admins ON admins.id = audit_logs.admin_id
-            ORDER BY audit_logs.created_at DESC LIMIT 300
-            """
+            ORDER BY audit_logs.created_at DESC LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
         ).fetchall()
-        return jsonify({"auditLogs": rows_to_dicts(rows)})
+        return jsonify(paginated_payload("auditLogs", rows_to_dicts(rows), total, page, limit))
+
+
+@app.get("/api/admin/audit")
+def audit_logs_alias() -> Response:
+    return audit_logs()
 
 
 @app.get("/api/admin/settings")
@@ -2813,12 +2979,23 @@ def get_deals() -> Response:
     admin = require_admin()
     if not isinstance(admin, dict):
         return admin
+    page = request_page()
+    limit = request_limit()
+    offset = (page - 1) * limit
     with db() as conn:
         if admin["role"] == "assistant":
-            rows = conn.execute("SELECT * FROM deals WHERE assistant_id = ? ORDER BY created_at DESC", (admin["id"],)).fetchall()
+            total = conn.execute("SELECT COUNT(*) FROM deals WHERE assistant_id = ?", (admin["id"],)).fetchone()[0]
+            rows = conn.execute(
+                "SELECT * FROM deals WHERE assistant_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (admin["id"], limit, offset),
+            ).fetchall()
         else:
-            rows = conn.execute("SELECT * FROM deals ORDER BY created_at DESC").fetchall()
-        return jsonify({"deals": [deal_payload(conn, row) for row in rows]})
+            total = conn.execute("SELECT COUNT(*) FROM deals").fetchone()[0]
+            rows = conn.execute(
+                "SELECT * FROM deals ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+        return jsonify(paginated_payload("deals", [deal_payload(conn, row) for row in rows], total, page, limit))
 
 
 @app.post("/api/admin/deals")
@@ -3767,16 +3944,20 @@ def export_excel(kind: str) -> Response:
 @app.get("/api/project-updates/published")
 def get_published_updates() -> Response:
     """Get all published project updates for public display"""
-    with db() as conn:
-        updates = conn.execute(
-            """
-            SELECT id, title, description, update_date, stage, media_type, media_url, thumbnail_url
-            FROM project_updates 
-            WHERE status = 'published'
-            ORDER BY display_order ASC, update_date DESC
-            """
-        ).fetchall()
-        return jsonify(rows_to_dicts(updates))
+    def load_published_updates() -> list[dict[str, Any]]:
+        with db() as conn:
+            updates = conn.execute(
+                """
+                SELECT id, title, description, update_date, stage, media_type, media_url, thumbnail_url
+                FROM project_updates
+                WHERE status = 'published'
+                ORDER BY display_order ASC, update_date DESC
+                """
+            ).fetchall()
+            return rows_to_dicts(updates)
+
+    return cached_public_json("published_updates", load_published_updates)
+
 
 @app.get("/api/admin/project-updates")
 def get_all_project_updates() -> Response:
@@ -3784,17 +3965,23 @@ def get_all_project_updates() -> Response:
     admin = require_admin()
     if not isinstance(admin, dict):
         return admin
+    page = request_page()
+    limit = request_limit()
+    offset = (page - 1) * limit
     
     with db() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM project_updates").fetchone()[0]
         updates = conn.execute(
             """
             SELECT pu.*, a.full_name as created_by_name
             FROM project_updates pu
             LEFT JOIN admins a ON pu.created_by = a.id
             ORDER BY pu.display_order ASC, pu.update_date DESC
-            """
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
         ).fetchall()
-        return jsonify(rows_to_dicts(updates))
+        return jsonify(paginated_payload("updates", rows_to_dicts(updates), total, page, limit))
 
 @app.post("/api/admin/project-updates")
 def create_project_update() -> Response:

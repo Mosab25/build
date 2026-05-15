@@ -36,7 +36,7 @@ function renderUpdatesFallback(grid) {
 
 function renderUpdateMedia(update) {
   if (update.media_type === "video") {
-    return `<video controls preload="metadata" muted playsinline style="width:100%;border-radius:8px"><source src="${update.media_url}" type="video/mp4" /></video>`;
+    return `<video controls preload="metadata" muted playsinline poster="media/optimized/facade-thumb.webp" style="width:100%;border-radius:8px"><source src="${update.media_url}" type="video/mp4" /></video>`;
   }
   return `<img src="${update.media_url}" alt="${escapeHTML(update.title)}" style="width:100%;border-radius:8px" loading="lazy" decoding="async" onerror="this.style.display='none'" />`;
 }

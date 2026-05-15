@@ -109,7 +109,7 @@ function renderApartmentModels() {
   if (!target) return;
   target.innerHTML = APARTMENT_MODELS.map((model) => `
     <article class="model-card">
-      <img src="${model.src}" alt="${escapeHTML(model.alt)}" loading="lazy" decoding="async" onerror="this.style.display='none'" />
+      <img src="${model.thumbSrc || model.src}" alt="${escapeHTML(model.alt)}" loading="lazy" decoding="async" onerror="this.replaceWith(mediaFallback('${escapeHTML(model.title)}'))" />
       <div class="model-card-body">
         <span class="eyebrow">Type ${model.apartmentType}</span>
         <h3>${escapeHTML(model.title)}</h3>

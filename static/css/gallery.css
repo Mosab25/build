@@ -14,3 +14,24 @@
   object-fit: cover;
   background: #000;
 }
+
+.media-fallback {
+  display: grid;
+  place-items: end start;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(8, 12, 18, 0.2), rgba(8, 12, 18, 0.82)),
+    #101722;
+  background-position: center;
+  background-size: cover;
+  color: #f7ead0;
+  font-weight: 900;
+}
+
+.media-fallback span {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(5, 8, 12, 0.62);
+}

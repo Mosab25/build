@@ -12,13 +12,17 @@ function renderUpdatesAdminPanel() {
 
 async function bindUpdatesAdminPanel() {
   qs("#newUpdateButton")?.addEventListener("click", openUpdateForm);
-  await loadUpdatesAdminList();
+  await loadUpdatesAdminList(false);
 }
 
-async function loadUpdatesAdminList() {
+async function loadUpdatesAdminList(force = false) {
   const target = qs("#updatesAdminList");
   try {
-    const updates = await UpdatesAPI.list();
+    if (force) invalidateDashboardCache(["updates"]);
+    if (!isDashboardLoaded("updates")) {
+      await ensureDashboardData(["updates"], APP_STATE.activeDashboardView);
+    }
+    const updates = APP_STATE.cache.updates || APP_STATE.dashboard?.updates || [];
     if (!updates.length) {
       target.innerHTML = EmptyState("لا توجد منشورات متاحة حاليًا.", "أضف أول بوست ليظهر في قسم التحديثات بالواجهة العامة.");
       return;
@@ -45,13 +49,13 @@ async function loadUpdatesAdminList() {
     qsa("[data-update-publish]").forEach((button) => button.addEventListener("click", async () => {
       await UpdatesAPI.publish(button.dataset.updatePublish);
       showToast("تم نشر التحديث بنجاح.", "success");
-      await loadUpdatesAdminList();
+      await loadUpdatesAdminList(true);
       await initLatestUpdates();
     }));
     qsa("[data-update-unpublish]").forEach((button) => button.addEventListener("click", async () => {
       await UpdatesAPI.unpublish(button.dataset.updateUnpublish);
       showToast("تم الحفظ بنجاح.", "success");
-      await loadUpdatesAdminList();
+      await loadUpdatesAdminList(true);
       await initLatestUpdates();
     }));
   } catch (error) {
@@ -99,7 +103,7 @@ async function saveUpdate(event) {
     });
     closeModal();
     showToast(status === "published" ? "تم نشر التحديث بنجاح." : "تم الحفظ بنجاح.", "success");
-    await loadUpdatesAdminList();
+    await loadUpdatesAdminList(true);
     await initLatestUpdates();
   } catch (error) {
     showToast(error.message, "error");

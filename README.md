@@ -85,7 +85,7 @@ python -m pip install -r requirements.txt
 5. استخدم Start Command الآمن التالي:
 
 ```text
-python scripts/prepare_production.py && gunicorn server:app
+python scripts/prepare_production.py && gunicorn -c gunicorn.conf.py server:app
 ```
 
 6. في أول تشغيل سيتم:
@@ -118,7 +118,7 @@ OWNER_NAME=مصعب حسن
 2. استخدم **Start Command** المرة واحدة فقط:
 
 ```text
-python scripts/prepare_production.py && gunicorn server:app
+python scripts/prepare_production.py && gunicorn -c gunicorn.conf.py server:app
 ```
 
 3. عند التشغيل الأول:

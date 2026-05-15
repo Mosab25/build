@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import secrets
 import uuid
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,15 @@ except ImportError:
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
+
+
+POOL_MIN_CONNECTIONS = 1
+POOL_MAX_CONNECTIONS = 3
+_pool_lock = threading.Lock()
+_pool_semaphore = threading.BoundedSemaphore(POOL_MAX_CONNECTIONS)
+_connection_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+_connection_pool_pid: int | None = None
 
 
 def get_database_url() -> str:
@@ -38,6 +48,77 @@ def get_database_url() -> str:
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def get_connection_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    """Use a tiny thread-safe pool so Render/Neon do not pay connect cost on every query."""
+    global _connection_pool, _connection_pool_pid, _pool_semaphore
+    pid = os.getpid()
+    with _pool_lock:
+        if _connection_pool is None or _connection_pool_pid != pid:
+            if _connection_pool is not None:
+                try:
+                    _connection_pool.closeall()
+                except Exception:
+                    pass
+            _connection_pool = psycopg2.pool.ThreadedConnectionPool(
+                POOL_MIN_CONNECTIONS,
+                POOL_MAX_CONNECTIONS,
+                get_database_url(),
+            )
+            _connection_pool_pid = pid
+            _pool_semaphore = threading.BoundedSemaphore(POOL_MAX_CONNECTIONS)
+        return _connection_pool
+
+
+def get_db_connection():
+    """Checkout one PostgreSQL connection from the process-local pool."""
+    pool = get_connection_pool()
+    _pool_semaphore.acquire()
+    try:
+        return pool.getconn()
+    except Exception:
+        _pool_semaphore.release()
+        raise
+
+
+def release_db_connection(conn, close: bool = False) -> None:
+    """Return a connection to the pool; discard it if it was closed or errored."""
+    if conn is None:
+        return
+    pid = os.getpid()
+    try:
+        with _pool_lock:
+            pool = _connection_pool if _connection_pool_pid == pid else None
+        if pool is None:
+            conn.close()
+            try:
+                _pool_semaphore.release()
+            except ValueError:
+                pass
+            return
+        pool.putconn(conn, close=close or bool(getattr(conn, "closed", False)))
+        _pool_semaphore.release()
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        try:
+            _pool_semaphore.release()
+        except ValueError:
+            pass
+
+
+def close_all_db_connections() -> None:
+    """Close pooled connections during process shutdown or tests."""
+    global _connection_pool, _connection_pool_pid, _pool_semaphore
+    with _pool_lock:
+        if _connection_pool is not None:
+            _connection_pool.closeall()
+            _connection_pool = None
+            _connection_pool_pid = None
+            _pool_semaphore = threading.BoundedSemaphore(POOL_MAX_CONNECTIONS)
 
 
 class PGRow(dict):
@@ -83,8 +164,9 @@ class PGCursor:
 
 class PGConnection:
     def __init__(self):
-        self.conn = psycopg2.connect(get_database_url())
+        self.conn = get_db_connection()
         self.conn.autocommit = False
+        self._closed = False
 
     def cursor(self, *args, **kwargs):
         return self.conn.cursor(*args, **kwargs)
@@ -107,7 +189,9 @@ class PGConnection:
         self.conn.rollback()
 
     def close(self) -> None:
-        self.conn.close()
+        if not self._closed:
+            release_db_connection(self.conn)
+            self._closed = True
 
     def __enter__(self) -> "PGConnection":
         return self

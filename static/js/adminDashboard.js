@@ -1,9 +1,12 @@
 function statCard(label, value) {
-  return `<article class="stat-card"><strong>${Number(value || 0).toLocaleString("ar-EG")}</strong><span>${escapeHTML(label)}</span></article>`;
+  const display = value === undefined || value === null ? "..." : Number(value || 0).toLocaleString("ar-EG");
+  return `<article class="stat-card"><strong>${display}</strong><span>${escapeHTML(label)}</span></article>`;
 }
 
 function renderAdminDashboard() {
   const data = APP_STATE.dashboard;
+  const apartmentsLoaded = isDashboardLoaded("apartments");
+  const clientsLoaded = isDashboardLoaded("clients");
   return `
     <div class="dashboard-grid">
       ${statCard("إجمالي الشقق", data.summary.totalApartments)}
@@ -23,11 +26,11 @@ function renderAdminDashboard() {
       </div>
       ${renderAdminAlerts(data.summary || {})}
       <h3>خريطة توفر الشقق داخل المبنى</h3>
-      ${renderBuildingMap(data.apartments || [])}
+      ${apartmentsLoaded ? renderBuildingMap(data.apartments || []) : LoadingState("سيتم تحميل خريطة الشقق عند فتح تبويب العملاء والشقق.")}
     </section>
     <section class="data-panel">
       <h3>إدارة العملاء</h3>
-      ${renderClientsTable(data.clients || [])}
+      ${clientsLoaded ? renderClientsTable(data.clients || []) : LoadingState("سيتم تحميل العملاء عند فتح تبويب العملاء والشقق.")}
     </section>
   `;
 }
@@ -143,12 +146,18 @@ function renderClientsTable(clients) {
 }
 
 function bindAdminDashboard() {
-  qs("#newPaymentButton")?.addEventListener("click", () => openPaymentForm());
+  qs("#newPaymentButton")?.addEventListener("click", async () => {
+    await ensureDashboardData(["clients", "apartments"], APP_STATE.activeDashboardView);
+    openPaymentForm();
+  });
   qsa("[data-client-payment]").forEach((button) => button.addEventListener("click", () => openPaymentForm(button.dataset.clientPayment)));
   qsa("[data-client-add-unit]").forEach((button) => button.addEventListener("click", () => openClientFormForExistingClient(button.dataset.clientAddUnit)));
   qsa("[data-client-delete-group]").forEach((button) => button.addEventListener("click", () => deleteClientGroup(button.dataset.clientDeleteGroup, button.dataset.clientName)));
   qsa("[data-apartment-id]").forEach((button) => button.addEventListener("click", () => openClientFormFromApartment(button.dataset.apartmentId)));
-  qs("#newClientButton")?.addEventListener("click", openClientForm);
+  qs("#newClientButton")?.addEventListener("click", async () => {
+    await ensureDashboardData(["apartments"], APP_STATE.activeDashboardView);
+    openClientForm();
+  });
 }
 
 function openClientFormFromApartment(apartmentId) {

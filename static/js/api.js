@@ -67,6 +67,17 @@ const uploadFile = (path, file) => {
 };
 const downloadFile = (path) => window.open(path, "_blank", "noopener");
 
+function listPayload(response, key) {
+  const items = Array.isArray(response) ? response : (response.items || response[key] || []);
+  return {
+    items,
+    page: response.page || response.pagination?.page || 1,
+    limit: response.limit || response.pagination?.limit || items.length || 20,
+    total: response.total ?? response.pagination?.total ?? items.length,
+    hasMore: Boolean(response.hasMore ?? response.pagination?.hasMore),
+  };
+}
+
 const AuthAPI = {
   login: (email, password) => apiPost("/api/admin/login", { email, password }),
   logout: () => apiPost("/api/admin/logout"),
@@ -91,7 +102,7 @@ const AdminAPI = {
   dashboardSummary: () => apiGet("/api/admin/dashboard-summary"),
   apartments: () => apiGet("/api/admin/apartments"),
   createApartment: (payload) => apiPost("/api/admin/apartments", payload),
-  clients: () => apiGet("/api/admin/clients"),
+  clients: async (page = 1, limit = 20) => listPayload(await apiGet(`/api/admin/clients?page=${page}&limit=${limit}`), "clients"),
   updateAccount: (payload) => apiPatch("/api/admin/account", payload),
   profile: () => apiGet("/api/admin/profile"),
   updateProfile: (payload) => apiPatch("/api/admin/profile", payload),
@@ -108,17 +119,17 @@ const AdminAPI = {
     }
   },
   updateApartment: (id, payload) => apiPatch(`/api/admin/apartments/${id}`, payload),
-  payments: () => apiGet("/api/admin/payments"),
+  payments: async (page = 1, limit = 20) => listPayload(await apiGet(`/api/admin/payments?page=${page}&limit=${limit}`), "payments"),
   createPayment: (payload) => apiPost("/api/admin/payments", payload),
   updatePayment: (id, payload) => apiPatch(`/api/admin/payments/${id}`, payload),
   deletePayment: (id) => apiDelete(`/api/admin/payments/${id}?confirm=true`),
-  installments: () => apiGet("/api/admin/installments"),
+  installments: async (page = 1, limit = 20) => listPayload(await apiGet(`/api/admin/installments?page=${page}&limit=${limit}`), "installments"),
   createInstallment: (payload) => apiPost("/api/admin/installments", payload),
   updateInstallment: (id, payload) => apiPatch(`/api/admin/installments/${id}`, payload),
   deleteInstallment: (id) => apiDelete(`/api/admin/installments/${id}?confirm=true`),
   settings: () => apiGet("/api/admin/settings"),
   updateSettings: (payload) => apiPatch("/api/admin/settings", payload),
-  auditLogs: () => apiGet("/api/admin/audit-logs"),
+  auditLogs: async (page = 1, limit = 20) => listPayload(await apiGet(`/api/admin/audit?page=${page}&limit=${limit}`), "auditLogs"),
   users: () => apiGet("/api/admin/users"),
   createUser: (payload) => apiPost("/api/admin/users", payload),
   updateUser: (id, payload) => apiPatch(`/api/admin/users/${id}`, payload),
@@ -159,7 +170,7 @@ const OwnerAPI = {
 };
 
 const DealAPI = {
-  list: () => apiGet("/api/admin/deals"),
+  list: async (page = 1, limit = 20) => listPayload(await apiGet(`/api/admin/deals?page=${page}&limit=${limit}`), "deals"),
   create: (payload) => apiPost("/api/admin/deals", payload),
   update: (id, payload) => apiPatch(`/api/admin/deals/${id}`, payload),
   submit: (id) => apiPost(`/api/admin/deals/${id}/submit`),
@@ -176,7 +187,7 @@ const ContractAPI = {
 };
 
 const UpdatesAPI = {
-  list: () => apiGet("/api/admin/project-updates"),
+  list: async (page = 1, limit = 20) => listPayload(await apiGet(`/api/admin/project-updates?page=${page}&limit=${limit}`), "updates"),
   create: (payload) => apiPost("/api/admin/project-updates", payload),
   update: (id, payload) => apiPatch(`/api/admin/project-updates/${id}`, payload),
   remove: (id) => apiDelete(`/api/admin/project-updates/${id}`),
