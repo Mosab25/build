@@ -92,7 +92,7 @@ function bindSettingsForm() {
           statement_footer: qs("#statementFooter").value.trim(),
         });
         showToast("تم حفظ الإعدادات بنجاح.", "success");
-        await loadDashboard();
+        await refreshDashboardKeys(["settings"], { loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الإعدادات..." });
       } catch (error) {
         showToast(error.message, "error");
       }
@@ -113,7 +113,8 @@ function bindSettingsForm() {
         });
         APP_STATE.session = result.admin || result.profile || APP_STATE.session;
         showToast("تم تحديث بيانات الحساب بنجاح.", "success");
-        await loadDashboard();
+        renderDashboardShell();
+        renderActiveDashboardView();
       } catch (error) {
         showToast(error.message, "error");
       } finally {
@@ -177,7 +178,7 @@ function openSettingsAccountEdit(userId) {
       });
       closeModal();
       showToast("تم حفظ بيانات الحساب.", "success");
-      await loadDashboard();
+      await refreshDashboardKeys(["users"], { loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الحسابات..." });
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -200,7 +201,7 @@ function openSettingsAccountPasswordReset(userId) {
       await AdminAPI.resetUserPassword(userId, { temporary_password: form.get("temporary_password") });
       closeModal();
       showToast("تمت إعادة تعيين كلمة المرور.", "success");
-      await loadDashboard();
+      await refreshDashboardKeys(["users"], { loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الحسابات..." });
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -213,7 +214,7 @@ async function toggleSettingsAccountStatus(userId, enabled) {
     if (enabled) await AdminAPI.enableUser(userId);
     else await AdminAPI.disableUser(userId);
     showToast(enabled ? "تم تفعيل الحساب." : "تم إيقاف الحساب.", "success");
-    await loadDashboard();
+    await refreshDashboardKeys(["users"], { loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الحسابات..." });
   } catch (error) {
     showToast(error.message, "error");
   }

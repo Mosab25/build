@@ -1022,19 +1022,19 @@ def recalc_client(conn: Any, client_id: str) -> None:
         conn.execute(
             """
             UPDATE clients
-            SET paid_amount = ?, remaining_amount = ?, payment_status = ?, reservation_status = ?, updated_at = ?
+            SET total_amount = ?, paid_amount = ?, remaining_amount = ?, payment_status = ?, reservation_status = ?, updated_at = ?
             WHERE id = ?
             """,
-            (paid, remaining, payment_status, next_reservation_status, now_iso(), client_id),
+            (total, paid, remaining, payment_status, next_reservation_status, now_iso(), client_id),
         )
     else:
         conn.execute(
             """
             UPDATE clients
-            SET paid_amount = ?, remaining_amount = ?, payment_status = ?, updated_at = ?
+            SET total_amount = ?, paid_amount = ?, remaining_amount = ?, payment_status = ?, updated_at = ?
             WHERE id = ?
             """,
-            (paid, remaining, payment_status, now_iso(), client_id),
+            (total, paid, remaining, payment_status, now_iso(), client_id),
         )
     sync_apartment_for_client(conn, client_id)
 
@@ -1205,13 +1205,29 @@ def client_payload(conn: Any, client: dict[str, Any], include_private: bool = Tr
         apt = conn.execute("SELECT * FROM apartments WHERE id = ?", (client.get("apartment_id"),)).fetchone() if client.get("apartment_id") else None
         apartments_rows = []
         if apt:
-            apartments_rows = [{"apartment_id": apt["id"], "unit_code": apt["unit_code"], "unit_price": apt["price"], "ca_status": apt["status"], "assigned_at": None}]
+            apartments_rows = [{
+                "apartment_id": apt["id"],
+                "unit_code": apt["unit_code"],
+                "floor_number": apt["floor_number"],
+                "apartment_type": apt["apartment_type"],
+                "area": apt["area"],
+                "direction_ar": apt["direction_ar"],
+                "direction_en": apt["direction_en"],
+                "unit_price": apt["price"],
+                "ca_status": apt["status"],
+                "assigned_at": None,
+            }]
 
     apartments = []
     for row in apartments_rows:
         apartments.append({
             "id": row.get("apartment_id"),
             "unitCode": row.get("unit_code"),
+            "floorNumber": row.get("floor_number"),
+            "apartmentType": row.get("apartment_type"),
+            "area": row.get("area"),
+            "directionAr": row.get("direction_ar"),
+            "directionEn": row.get("direction_en"),
             "price": float(row.get("unit_price") or row.get("apt_price") or 0),
             "status": status_title(row.get("ca_status") or row.get("apt_status")),
             "assignedAt": row.get("assigned_at"),

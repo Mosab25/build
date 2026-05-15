@@ -7,6 +7,13 @@ function initAuth() {
   qs("#staffLoginForm").addEventListener("submit", handleStaffLogin);
   qs("#logoutButton").addEventListener("click", logoutStaff);
   qs("#refreshDashboard").addEventListener("click", () => refreshCurrentDashboardView());
+  document.addEventListener("click", closeClientMoreDropdownsOnOutsideClick);
+}
+
+function closeClientMoreDropdownsOnOutsideClick(event) {
+  if (event.target.closest(".client-more-dropdown")) return;
+  if (event.target.closest("[data-client-more], [data-owner-client-more]")) return;
+  qsa(".client-more-dropdown").forEach((dropdown) => dropdown.remove());
 }
 
 async function handleStaffLogin(event) {
@@ -103,13 +110,18 @@ async function logoutStaff() {
   }
 }
 
-async function loadDashboard() {
+async function loadDashboard(options = {}) {
   const keys = activeDashboardDataKeys();
-  invalidateDashboardCache(keys);
-  await loadDashboardSummary(true);
+  const force = Boolean(options.force);
+  if (force) invalidateDashboardCache(["summary", ...keys]);
   renderDashboardShell();
+  await loadDashboardSummary(force);
   if (keys.length) {
-    qs("#dashboardContent").innerHTML = LoadingState();
+    if (keys.every((key) => isDashboardLoaded(key))) {
+      renderActiveDashboardView();
+      return;
+    }
+    qs("#dashboardContent").innerHTML = LoadingState("جاري تحميل هذا التبويب...");
     await ensureDashboardData(keys, APP_STATE.activeDashboardView);
     return;
   }
@@ -245,11 +257,85 @@ async function refreshCurrentDashboardView() {
   invalidateDashboardCache(["summary", ...keys]);
   await loadDashboardSummary(true);
   if (keys.length) {
-    qs("#dashboardContent").innerHTML = LoadingState();
+    qs("#dashboardContent").innerHTML = LoadingState("جاري تحديث هذا التبويب...");
     await ensureDashboardData(keys, APP_STATE.activeDashboardView);
     return;
   }
   renderActiveDashboardView();
+}
+
+async function refreshDashboardKeys(keys = [], options = {}) {
+  const uniqueKeys = [...new Set(keys.filter(Boolean))];
+  const viewName = options.viewName || APP_STATE.activeDashboardView;
+  const section = options.loadingSelector ? qs(options.loadingSelector) : null;
+  if (section && options.loadingText) {
+    section.innerHTML = LoadingState(options.loadingText);
+  }
+  invalidateDashboardCache(uniqueKeys);
+  if (options.summary) {
+    if (APP_STATE.session?.role === "owner") {
+      invalidateDashboardCache(["ownerSummary"]);
+      await loadDashboardDataset("ownerSummary");
+    } else {
+      await loadDashboardSummary(true);
+    }
+  }
+  for (const key of uniqueKeys) {
+    await loadDashboardDataset(key);
+  }
+  if (options.render !== false && APP_STATE.activeDashboardView === viewName) {
+    renderActiveDashboardView();
+  }
+}
+
+async function refreshSummaryOnly(options = {}) {
+  await loadDashboardSummary(true);
+  if (options.render && APP_STATE.activeDashboardView === (options.viewName || APP_STATE.activeDashboardView)) {
+    renderActiveDashboardView();
+  }
+}
+
+async function refreshClientsAfterChange(options = {}) {
+  const role = APP_STATE.session?.role;
+  if (role === "owner") {
+    await refreshDashboardKeys(["ownerClients", "ownerApartments"], { summary: true, ...options });
+    return;
+  }
+  await refreshDashboardKeys(["clients", "apartments"], { summary: true, ...options });
+}
+
+async function refreshClientsAfterPriceChange(options = {}) {
+  const role = APP_STATE.session?.role;
+  if (role === "owner") {
+    await refreshDashboardKeys(["ownerClients"], { summary: true, ...options });
+    return;
+  }
+  await refreshDashboardKeys(["clients"], { summary: true, ...options });
+}
+
+async function refreshPaymentsAfterChange(options = {}) {
+  const role = APP_STATE.session?.role;
+  if (role === "owner") {
+    await refreshDashboardKeys(["ownerPayments", "ownerClients"], { summary: true, ...options });
+    return;
+  }
+  await refreshDashboardKeys(["payments", "clients"], { summary: true, ...options });
+}
+
+async function refreshInstallmentsAfterChange(options = {}) {
+  await refreshDashboardKeys(["installments", "clients"], { summary: true, ...options });
+}
+
+async function refreshUpdatesAfterChange(options = {}) {
+  await refreshDashboardKeys(["updates"], options);
+}
+
+async function refreshDealsAfterChange(options = {}) {
+  if (APP_STATE.session?.role === "owner") {
+    await refreshDashboardKeys(["ownerDeals", "ownerApartments", "ownerClients"], { summary: true, ...options });
+    return;
+  }
+  await refreshDashboardKeys(["deals", "apartments"], { summary: true, ...options });
 }
 
 async function ensureDashboardData(keys, viewName = APP_STATE.activeDashboardView) {

@@ -208,10 +208,6 @@ function bindAdminDashboard() {
     await ensureDashboardData(["apartments"], APP_STATE.activeDashboardView);
     openClientForm();
   });
-  // Close dropdowns when clicking outside
-  document.addEventListener("click", () => {
-    qsa(".client-more-dropdown").forEach((dropdown) => dropdown.remove());
-  });
 }
 
 function openClientFormFromApartment(apartmentId) {

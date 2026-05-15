@@ -485,8 +485,8 @@ def recalc_client(conn, client_id):
     else:
         payment_status = "partially_paid"
     execute(conn,
-        "UPDATE clients SET paid_amount = %s, remaining_amount = %s, payment_status = %s, updated_at = %s WHERE id = %s",
-        (paid, remaining, payment_status, now_iso(), client_id))
+        "UPDATE clients SET total_amount = %s, paid_amount = %s, remaining_amount = %s, payment_status = %s, updated_at = %s WHERE id = %s",
+        (total, paid, remaining, payment_status, now_iso(), client_id))
     sync_apartment_for_client(conn, client_id)
 
 
@@ -556,18 +556,34 @@ def client_payload(conn, client, include_private=True):
     # Try to load linked apartments; fall back to legacy single-apartment field
     apartments_rows = []
     try:
-        apartments_rows = fetchall(conn, "SELECT ca.id AS client_apartment_id, ca.apartment_id, ca.unit_price, ca.status AS ca_status, ca.assigned_at, a.unit_code, a.price AS apt_price, a.status AS apt_status, a.notes AS apt_notes FROM client_apartments ca LEFT JOIN apartments a ON a.id = ca.apartment_id WHERE ca.client_id = ? ORDER BY ca.assigned_at DESC", (client["id"],))
+        apartments_rows = fetchall(conn, "SELECT ca.id AS client_apartment_id, ca.apartment_id, ca.unit_price, ca.status AS ca_status, ca.assigned_at, a.unit_code, a.floor_number, a.apartment_type, a.area, a.direction_ar, a.direction_en, a.price AS apt_price, a.status AS apt_status, a.notes AS apt_notes FROM client_apartments ca LEFT JOIN apartments a ON a.id = ca.apartment_id WHERE ca.client_id = ? ORDER BY ca.assigned_at DESC", (client["id"],))
     except Exception:
         apt = fetchone(conn, "SELECT * FROM apartments WHERE id = %s", (client.get("apartment_id"),)) if client.get("apartment_id") else None
         apartments_rows = []
         if apt:
-            apartments_rows = [{"apartment_id": apt["id"], "unit_code": apt["unit_code"], "unit_price": apt["price"], "ca_status": apt["status"], "assigned_at": None}]
+            apartments_rows = [{
+                "apartment_id": apt["id"],
+                "unit_code": apt["unit_code"],
+                "floor_number": apt.get("floor_number"),
+                "apartment_type": apt.get("apartment_type"),
+                "area": apt.get("area"),
+                "direction_ar": apt.get("direction_ar"),
+                "direction_en": apt.get("direction_en"),
+                "unit_price": apt["price"],
+                "ca_status": apt["status"],
+                "assigned_at": None,
+            }]
 
     apartments = []
     for r in apartments_rows:
         apartments.append({
             "id": r.get("apartment_id"),
             "unitCode": r.get("unit_code"),
+            "floorNumber": r.get("floor_number"),
+            "apartmentType": r.get("apartment_type"),
+            "area": r.get("area"),
+            "directionAr": r.get("direction_ar"),
+            "directionEn": r.get("direction_en"),
             "price": float(r.get("unit_price") or r.get("apt_price") or 0),
             "status": status_title(r.get("ca_status") or r.get("apt_status")),
             "assignedAt": r.get("assigned_at"),

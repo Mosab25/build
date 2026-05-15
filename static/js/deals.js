@@ -191,7 +191,7 @@ async function saveDealFromWizard(form, submitAfterSave) {
     }
     closeModal();
     APP_STATE.activeDashboardView = "deals";
-    await loadDashboard();
+    await refreshDealsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الديلات..." });
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -206,7 +206,7 @@ async function handleDealAction(target) {
     if (!confirm("هل أنت متأكد من حذف مسودة الديل؟")) return true;
     await DealAPI.remove(target.dataset.dealDelete);
     showToast("تم حذف مسودة الديل بنجاح.", "success");
-    await loadDashboard();
+    await refreshDealsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الديلات..." });
     return true;
   }
   if (target.dataset.dealEdit) {
@@ -225,7 +225,7 @@ async function handleDealAction(target) {
     if (dealId) {
       await DealAPI[method](dealId);
       showToast(method === "submit" ? "تم إرسال الطلب للموافقة." : "تم الحفظ بنجاح.", "success");
-      await loadDashboard();
+      await refreshDealsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الديلات..." });
       return true;
     }
   }
@@ -254,7 +254,7 @@ function openCancelDealDialog(dealId, scope = "admin") {
       else await DealAPI.cancel(dealId, reason);
       closeModal();
       showToast("تم إلغاء الديل بنجاح.", "success");
-      await loadDashboard();
+      await refreshDealsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الديلات..." });
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -294,7 +294,7 @@ function openDealEditDialog(dealId) {
       });
       closeModal();
       showToast("تم حفظ التعديل بنجاح.", "success");
-      await loadDashboard();
+      await refreshDealsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الديلات..." });
     } catch (error) {
       showToast(error.message, "error");
     }
