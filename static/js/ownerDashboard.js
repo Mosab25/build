@@ -471,8 +471,13 @@ function ownerClientGroups() {
     }
     const group = groups.get(key);
     group.ids.push(client.id);
-    group.units.push(client.apartment?.unitCode || "-");
-    group.apartments.push(client.apartment);
+    const apartments = normalizedClientApartments(client);
+    group.units.push(...(apartments.length ? apartments.map((apt) => apt.unitCode || "-") : ["-"]));
+    apartments.forEach((apt) => {
+      if (!group.apartments.some((item) => item.clientId === apt.clientId && item.id === apt.id)) {
+        group.apartments.push(apt);
+      }
+    });
     group.totalAmount += Number(client.totalAmount || 0);
     group.paidAmount += Number(client.paidAmount || 0);
     group.remainingAmount += Number(client.remainingAmount || 0);
@@ -485,6 +490,28 @@ function ownerClientGroups() {
     else group.paymentStatus = "Pending";
   }
   return Array.from(groups.values());
+}
+
+function ownerClientActionContext(clientIds, clientName = "") {
+  const ids = (clientIds || []).map((id) => String(id).trim()).filter(Boolean);
+  const clients = (ownerData().clients || []).filter((client) => ids.includes(client.id));
+  const primary = clients[0];
+  const apartments = [];
+  clients.forEach((client) => {
+    normalizedClientApartments(client).forEach((apt) => {
+      if (!apartments.some((item) => item.clientId === apt.clientId && item.id === apt.id)) {
+        apartments.push(apt);
+      }
+    });
+  });
+  return {
+    ids,
+    primaryId: primary?.id || ids[0],
+    name: primary?.name || clientName || "",
+    phone: primary?.phone || "",
+    code: primary?.code || primary?.portfolioCode || "",
+    apartments,
+  };
 }
 
 function renderOwnerClientsTable() {
@@ -510,11 +537,7 @@ function renderOwnerClientsTable() {
             <td data-label="الإجراءات" class="table-actions">
               <button class="btn ghost small" type="button" data-owner-client-profile="${client.code}">عرض الملف</button>
               <button class="btn primary small" type="button" data-owner-client-payment="${client.code}">إضافة دفعة</button>
-              <button class="btn secondary small" type="button" data-owner-client-add-unit="${client.id}">إضافة شقة</button>
-              <button class="btn ghost small" type="button" data-owner-client-statement="${client.id}" data-client-code="${client.code}">كشف الحجز</button>
-              <button class="btn secondary small" type="button" data-owner-client-whatsapp="${client.phone || ""}">واتساب</button>
-              <button class="btn danger small" type="button" data-owner-client-cancel="${escapeHTML(client.ids.join(","))}" data-client-name="${escapeHTML(client.name)}">إلغاء الحجز</button>
-              <button class="btn danger small" type="button" data-owner-client-delete="${escapeHTML(client.ids.join(","))}" data-client-name="${escapeHTML(client.name)}">حذف</button>
+              <button class="btn ghost small" type="button" data-owner-client-more="${escapeHTML(client.ids.join(","))}" data-client-name="${escapeHTML(client.name)}">المزيد</button>
             </td>
           </tr>
         `).join("")}</tbody>
@@ -603,6 +626,10 @@ async function handleOwnerOperationsClick(event) {
   try {
     if (target.dataset.ownerClientProfile) return openOwnerClientProfile(target.dataset.ownerClientProfile);
     if (target.dataset.ownerClientPayment) return openOwnerClientPayment(target.dataset.ownerClientPayment);
+    if (target.dataset.ownerClientMore) {
+      event.stopPropagation();
+      return openOwnerClientMoreMenu(target, target.dataset.ownerClientMore.split(","), target.dataset.clientName);
+    }
     if (target.dataset.ownerClientAddUnit) return openClientFormForExistingClient(target.dataset.ownerClientAddUnit);
     if (target.dataset.ownerClientStatement) return downloadFile(ClientAPI.statementUrl(target.dataset.ownerClientStatement, target.dataset.clientCode));
     if (target.dataset.ownerClientWhatsapp) return openOwnerWhatsapp(target.dataset.ownerClientWhatsapp);
@@ -617,6 +644,53 @@ async function handleOwnerOperationsClick(event) {
   } catch (error) {
     showToast(error.message || "حدث خطأ أثناء تنفيذ العملية.", "error");
   }
+}
+
+function openOwnerClientMoreMenu(button, clientIds, clientName) {
+  const context = ownerClientActionContext(clientIds, clientName);
+  if (!context.primaryId) return;
+  qsa(".client-more-dropdown").forEach((dropdown) => dropdown.remove());
+
+  const dropdown = document.createElement("div");
+  dropdown.className = "client-more-dropdown";
+  dropdown.style.position = "absolute";
+  dropdown.style.zIndex = "1000";
+  dropdown.style.background = "white";
+  dropdown.style.border = "1px solid #ddd";
+  dropdown.style.borderRadius = "4px";
+  dropdown.style.padding = "8px 0";
+  dropdown.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)";
+
+  const rect = button.getBoundingClientRect();
+  dropdown.style.top = `${rect.bottom + window.scrollY + 4}px`;
+  dropdown.style.left = `${rect.left + window.scrollX}px`;
+  dropdown.innerHTML = `
+    <button class="dropdown-item" data-action="add-unit" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">إضافة شقة</button>
+    ${context.apartments.length > 0 ? `
+      <button class="dropdown-item" data-action="edit-price" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">تعديل سعر شقة</button>
+    ` : ""}
+    <button class="dropdown-item" data-action="statement" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">كشف الحجز</button>
+    <button class="dropdown-item" data-action="whatsapp" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">واتساب</button>
+    <hr style="margin:8px 0;border:none;border-top:1px solid #eee;">
+    <button class="dropdown-item danger" data-action="cancel" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;color:#d32f2f;">إلغاء الحجز</button>
+  `;
+  document.body.appendChild(dropdown);
+
+  dropdown.querySelectorAll(".dropdown-item").forEach((item) => {
+    item.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const action = item.dataset.action;
+      dropdown.remove();
+      if (action === "add-unit") openClientFormForExistingClient(context.primaryId);
+      else if (action === "edit-price") {
+        const firstApartment = context.apartments[0];
+        openApartmentPriceEditModal(firstApartment.clientId || context.primaryId, firstApartment.id, firstApartment.unitCode, firstApartment.price, context.name, context.apartments);
+      }
+      else if (action === "statement") downloadFile(ClientAPI.statementUrl(context.primaryId, context.code));
+      else if (action === "whatsapp") openOwnerWhatsapp(context.phone);
+      else if (action === "cancel") cancelOwnerClientGroup(context.ids.join(","), context.name);
+    });
+  });
 }
 
 function openOwnerClientProfile(code) {

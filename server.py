@@ -4291,14 +4291,22 @@ def get_all_project_updates() -> Response:
     page = request_page()
     limit = request_limit()
     offset = (page - 1) * limit
+    status_filter = (request.args.get("status") or "active").strip().lower()
+    if status_filter == "archived":
+        where_clause = "WHERE pu.status = 'archived'"
+        count_where_clause = "WHERE status = 'archived'"
+    else:
+        where_clause = "WHERE pu.status IN ('published', 'draft')"
+        count_where_clause = "WHERE status IN ('published', 'draft')"
     
     with db() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM project_updates").fetchone()[0]
+        total = conn.execute(f"SELECT COUNT(*) FROM project_updates {count_where_clause}").fetchone()[0]
         updates = conn.execute(
-            """
+            f"""
             SELECT pu.*, a.full_name as created_by_name
             FROM project_updates pu
             LEFT JOIN admins a ON pu.created_by = a.id
+            {where_clause}
             ORDER BY pu.display_order ASC, pu.update_date DESC
             LIMIT ? OFFSET ?
             """,

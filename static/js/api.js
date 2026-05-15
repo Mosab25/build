@@ -188,7 +188,7 @@ const ContractAPI = {
 };
 
 const UpdatesAPI = {
-  list: async (page = 1, limit = 20) => listPayload(await apiGet(`/api/admin/project-updates?page=${page}&limit=${limit}`), "updates"),
+  list: async (page = 1, limit = 20, status = "active") => listPayload(await apiGet(`/api/admin/project-updates?page=${page}&limit=${limit}&status=${encodeURIComponent(status)}`), "updates"),
   create: (payload) => apiPost("/api/admin/project-updates", payload),
   update: (id, payload) => apiPatch(`/api/admin/project-updates/${id}`, payload),
   remove: (id, payload = {}) => apiRequest(`/api/admin/project-updates/${id}`, { method: "DELETE", body: JSON.stringify(payload) }),

@@ -1,9 +1,15 @@
+let updatesAdminFilter = "active";
+
 function renderUpdatesAdminPanel() {
   return `
     <section class="data-panel">
       <div class="dashboard-topbar">
         <div><span class="eyebrow">المنشورات</span><h3>بوستات وتحديثات المشروع</h3></div>
         <button class="btn primary small" id="newUpdateButton" type="button">إضافة بوست</button>
+      </div>
+      <div class="segmented-control" id="updatesAdminFilter">
+        <button class="btn ${updatesAdminFilter === "active" ? "primary" : "ghost"} small" data-updates-filter="active" type="button">المنشورات النشطة</button>
+        <button class="btn ${updatesAdminFilter === "archived" ? "primary" : "ghost"} small" data-updates-filter="archived" type="button">المؤرشفة</button>
       </div>
       <div id="updatesAdminList">${LoadingState()}</div>
     </section>
@@ -12,19 +18,38 @@ function renderUpdatesAdminPanel() {
 
 async function bindUpdatesAdminPanel() {
   qs("#newUpdateButton")?.addEventListener("click", openUpdateForm);
+  qsa("[data-updates-filter]").forEach((button) => button.addEventListener("click", async () => {
+    updatesAdminFilter = button.dataset.updatesFilter;
+    qsa("[data-updates-filter]").forEach((item) => {
+      item.classList.toggle("primary", item.dataset.updatesFilter === updatesAdminFilter);
+      item.classList.toggle("ghost", item.dataset.updatesFilter !== updatesAdminFilter);
+    });
+    await loadUpdatesAdminList(true);
+  }));
   await loadUpdatesAdminList(false);
 }
 
 async function loadUpdatesAdminList(force = false) {
   const target = qs("#updatesAdminList");
   try {
-    if (force) invalidateDashboardCache(["updates"]);
-    if (!isDashboardLoaded("updates")) {
+    if (force && updatesAdminFilter === "active") invalidateDashboardCache(["updates"]);
+    if (updatesAdminFilter === "active" && !isDashboardLoaded("updates")) {
       await ensureDashboardData(["updates"], APP_STATE.activeDashboardView);
     }
-    const updates = APP_STATE.cache.updates || APP_STATE.dashboard?.updates || [];
+    const result = updatesAdminFilter === "active" && !force
+      ? { items: APP_STATE.cache.updates || APP_STATE.dashboard?.updates || [] }
+      : await UpdatesAPI.list(1, 20, updatesAdminFilter);
+    const updates = (result.items || []).filter((item) => {
+      if (updatesAdminFilter === "archived") return item.status === "archived";
+      return item.status === "published" || item.status === "draft";
+    });
+    if (updatesAdminFilter === "active" && force) {
+      cacheDashboardData("updates", updates, cacheListMeta(result));
+    }
     if (!updates.length) {
-      target.innerHTML = EmptyState("لا توجد منشورات متاحة حاليًا.", "أضف أول بوست ليظهر في قسم التحديثات بالواجهة العامة.");
+      target.innerHTML = updatesAdminFilter === "archived"
+        ? EmptyState("لا توجد منشورات مؤرشفة حاليًا.", "المنشورات التي يتم إزالتها ستظهر هنا فقط.")
+        : EmptyState("لا توجد منشورات متاحة حاليًا.", "أضف أول بوست ليظهر في قسم التحديثات بالواجهة العامة.");
       return;
     }
     target.innerHTML = `
@@ -37,10 +62,12 @@ async function loadUpdatesAdminList(force = false) {
               <td>${formatDate(item.update_date)}</td>
               <td>${StatusBadge(item.status)}</td>
               <td class="table-actions">
-                ${item.status === "published"
-                  ? `<button class="btn ghost small" data-update-unpublish="${item.id}">إلغاء النشر</button>`
-                  : `<button class="btn primary small" data-update-publish="${item.id}">نشر</button>`}
-                <button class="btn danger small" data-update-remove="${item.id}" data-update-title="${escapeHTML(item.title)}" type="button">إزالة المنشور</button>
+                ${updatesAdminFilter === "active" ? `
+                  ${item.status === "published"
+                    ? `<button class="btn ghost small" data-update-unpublish="${item.id}">إلغاء النشر</button>`
+                    : `<button class="btn primary small" data-update-publish="${item.id}">نشر</button>`}
+                  <button class="btn danger small" data-update-remove="${item.id}" data-update-title="${escapeHTML(item.title)}" type="button">إزالة المنشور</button>
+                ` : `<span class="muted">-</span>`}
               </td>
             </tr>
           `).join("")}</tbody>

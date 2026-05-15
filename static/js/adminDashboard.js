@@ -94,6 +94,7 @@ function buildPortfolioGroups(clients) {
         officeNotes: client.officeNotes || "",
         ids: [],
         units: [],
+        apartments: [],
         totalAmount: 0,
         paidAmount: 0,
         remainingAmount: 0,
@@ -102,7 +103,13 @@ function buildPortfolioGroups(clients) {
     }
     const group = groups.get(key);
     group.ids.push(client.id);
-    group.units.push(client.apartment?.unitCode || "-");
+    const apartments = normalizedClientApartments(client);
+    apartments.forEach((apt) => {
+      if (!group.apartments.some((item) => item.clientId === apt.clientId && item.id === apt.id)) {
+        group.apartments.push(apt);
+      }
+    });
+    group.units.push(...(apartments.length ? apartments.map((apt) => apt.unitCode || "-") : ["-"]));
     group.totalAmount += Number(client.totalAmount || 0);
     group.paidAmount += Number(client.paidAmount || 0);
     group.remainingAmount += Number(client.remainingAmount || 0);
@@ -116,6 +123,42 @@ function buildPortfolioGroups(clients) {
     else group.paymentStatus = "Pending";
   }
   return Array.from(groups.values()).sort((a, b) => b.totalAmount - a.totalAmount);
+}
+
+function normalizedClientApartments(client) {
+  const apartments = Array.isArray(client?.apartments) && client.apartments.length
+    ? client.apartments
+    : (client?.apartment ? [client.apartment] : []);
+  return apartments
+    .filter((apt) => apt && apt.id)
+    .map((apt) => ({
+      ...apt,
+      clientId: apt.clientId || client.id,
+      unitCode: apt.unitCode || apt.unit_code || "-",
+      price: Number(apt.price ?? apt.unitPrice ?? apt.unit_price ?? 0),
+    }));
+}
+
+function clientActionContext(clientIds, clientName = "") {
+  const ids = (clientIds || []).map((id) => String(id).trim()).filter(Boolean);
+  const clients = (APP_STATE.dashboard.clients || []).filter((client) => ids.includes(client.id));
+  const primary = clients[0];
+  const apartments = [];
+  clients.forEach((client) => {
+    normalizedClientApartments(client).forEach((apt) => {
+      if (!apartments.some((item) => item.clientId === apt.clientId && item.id === apt.id)) {
+        apartments.push(apt);
+      }
+    });
+  });
+  return {
+    ids,
+    primaryId: primary?.id || ids[0],
+    name: primary?.name || clientName || "",
+    phone: primary?.phone || "",
+    code: primary?.code || primary?.portfolioCode || "",
+    apartments,
+  };
 }
 
 function renderClientsTable(clients) {
@@ -219,14 +262,13 @@ function openClientView(clientId) {
     </div>
   `);
   qsa("[data-edit-price]").forEach((button) => button.addEventListener("click", () => {
-    openApartmentPriceEditModal(button.dataset.editPrice, button.dataset.apartmentId, button.dataset.apartmentCode, button.dataset.currentPrice);
+    openApartmentPriceEditModal(button.dataset.editPrice, button.dataset.apartmentId, button.dataset.apartmentCode, button.dataset.currentPrice, client.name, normalizedClientApartments(client));
   }));
 }
 
 function openClientMoreMenu(button, clientIds, clientName) {
-  const clientId = clientIds[0];
-  const client = (APP_STATE.dashboard.clients || []).find((item) => item.id === clientId);
-  if (!client) return;
+  const context = clientActionContext(clientIds, clientName);
+  if (!context.primaryId) return;
 
   // Remove existing dropdowns
   qsa(".client-more-dropdown").forEach((dropdown) => dropdown.remove());
@@ -247,13 +289,13 @@ function openClientMoreMenu(button, clientIds, clientName) {
 
   dropdown.innerHTML = `
     <button class="dropdown-item" data-action="add-unit" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">إضافة شقة</button>
-    ${client.apartments && client.apartments.length > 0 ? `
+    ${context.apartments.length > 0 ? `
       <button class="dropdown-item" data-action="edit-price" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">تعديل سعر شقة</button>
     ` : ""}
+    <button class="dropdown-item" data-action="statement" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">كشف الحجز</button>
     <button class="dropdown-item" data-action="whatsapp" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">واتساب</button>
     <hr style="margin:8px 0;border:none;border-top:1px solid #eee;">
     <button class="dropdown-item danger" data-action="cancel" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;color:#d32f2f;">إلغاء الحجز</button>
-    <button class="dropdown-item danger" data-action="delete" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;color:#d32f2f;">حذف السجل</button>
   `;
 
   document.body.appendChild(dropdown);
@@ -263,62 +305,59 @@ function openClientMoreMenu(button, clientIds, clientName) {
       e.stopPropagation();
       const action = item.dataset.action;
       dropdown.remove();
-      if (action === "add-unit") openClientFormForExistingClient(clientId);
-      else if (action === "edit-price") openApartmentPriceSelectModal(clientId, clientName);
+      if (action === "add-unit") openClientFormForExistingClient(context.primaryId);
+      else if (action === "edit-price") openApartmentPriceEditModalForContext(context);
+      else if (action === "statement") downloadFile(`/api/admin/statement/${encodeURIComponent(context.primaryId)}`);
       else if (action === "whatsapp") {
-        const phone = client.phone || "";
+        const phone = context.phone || "";
         if (phone) window.open(`https://wa.me/${phone.replace(/\D/g, "")}`, "_blank");
         else showToast("لا يوجد رقم هاتف", "error");
       }
-      else if (action === "cancel") cancelClientReservation(clientId);
-      else if (action === "delete") deleteClientGroup(clientIds.join(","), clientName);
+      else if (action === "cancel") cancelClientReservation(context.primaryId);
     });
   });
 }
 
-function openApartmentPriceSelectModal(clientId, clientName) {
-  const client = (APP_STATE.dashboard.clients || []).find((item) => item.id === clientId);
-  if (!client || !client.apartments || !client.apartments.length) {
+function openApartmentPriceEditModalForContext(context) {
+  if (!context?.apartments?.length) {
     showToast("لا توجد شقق مرتبطة بهذا العميل", "error");
     return;
   }
+  const firstApartment = context.apartments[0];
+  openApartmentPriceEditModal(firstApartment.clientId || context.primaryId, firstApartment.id, firstApartment.unitCode, firstApartment.price, context.name, context.apartments);
+}
 
+function openApartmentPriceSelectModal(clientId, clientName) {
+  openApartmentPriceEditModalForContext(clientActionContext([clientId], clientName));
+}
+
+function openApartmentPriceEditModal(clientId, apartmentId, apartmentCode, currentPrice, clientName = "", apartments = []) {
+  const options = apartments.length > 1 ? apartments : [];
+  const selectedApartment = options.find((apt) => apt.id === apartmentId && apt.clientId === clientId) || options[0];
   openModal(`
     <span class="eyebrow">العملاء</span>
     <h2>تعديل سعر شقة</h2>
-    <p>العميل: ${escapeHTML(clientName)}</p>
-    <div class="form-field">
-      <label for="apartmentSelect">اختر الشقة</label>
-      <select id="apartmentSelect">
-        ${client.apartments.map((apt) => `
-          <option value="${apt.id}" data-price="${apt.price}" data-code="${escapeHTML(apt.unitCode)}">
-            ${escapeHTML(apt.unitCode)} - ${formatMoney(apt.price)}
-          </option>
-        `).join("")}
-      </select>
-    </div>
-    <button class="btn primary full" id="selectApartmentBtn" type="button">التالي</button>
-  `);
-
-  qs("#selectApartmentBtn")?.addEventListener("click", () => {
-    const select = qs("#apartmentSelect");
-    if (!select) return;
-    const option = select.options[select.selectedIndex];
-    const apartmentId = option.value;
-    const apartmentCode = option.dataset.code;
-    const currentPrice = parseFloat(option.dataset.price);
-    closeModal();
-    openApartmentPriceEditModal(clientId, apartmentId, apartmentCode, currentPrice);
-  });
-}
-
-function openApartmentPriceEditModal(clientId, apartmentId, apartmentCode, currentPrice) {
-  openModal(`
-    <span class="eyebrow">العملاء</span>
-    <h2>تعديل سعر الشقة</h2>
-    <p>الشقة: ${escapeHTML(apartmentCode)}</p>
-    <p>السعر الحالي: ${formatMoney(currentPrice)}</p>
     <form id="apartmentPriceForm" class="form-grid" data-client-id="${clientId}" data-apartment-id="${apartmentId}">
+      <div class="form-field full">
+        <label for="priceClientName">اسم العميل</label>
+        <input id="priceClientName" value="${escapeHTML(clientName)}" readonly />
+      </div>
+      ${options.length > 1 ? `
+        <div class="form-field full">
+          <label for="priceApartmentSelect">اختيار الشقة</label>
+          <select id="priceApartmentSelect">
+            ${options.map((apt) => `
+              <option value="${apt.id}" data-client-id="${apt.clientId}" data-price="${apt.price}" data-code="${escapeHTML(apt.unitCode)}" ${apt.id === selectedApartment?.id && apt.clientId === selectedApartment?.clientId ? "selected" : ""}>
+                ${escapeHTML(apt.unitCode)}
+              </option>
+            `).join("")}
+          </select>
+        </div>
+      ` : `<input id="priceApartmentSelect" type="hidden" value="${escapeHTML(apartmentId)}" />`}
+      <div class="form-field">
+        <label for="currentPrice">السعر الحالي</label>
+        <input id="currentPrice" value="${formatAmountInput(currentPrice)}" readonly />
+      </div>
       <div class="form-field">
         <label for="newPrice">السعر الجديد</label>
         <input id="newPrice" type="text" inputmode="numeric" autocomplete="off" required placeholder="${formatAmountInput(currentPrice)}" />
@@ -335,14 +374,24 @@ function openApartmentPriceEditModal(clientId, apartmentId, apartmentCode, curre
   qs("#newPrice").addEventListener("input", (event) => {
     event.target.value = formatAmountInput(event.target.value);
   });
+  qs("#priceApartmentSelect")?.addEventListener("change", (event) => {
+    const option = event.target.options[event.target.selectedIndex];
+    const form = qs("#apartmentPriceForm");
+    form.dataset.clientId = option.dataset.clientId || clientId;
+    form.dataset.apartmentId = option.value;
+    const price = Number(option.dataset.price || 0);
+    qs("#currentPrice").value = formatAmountInput(price);
+    qs("#newPrice").value = formatAmountInput(price);
+  });
 
   qs("#apartmentPriceForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = qs("#apartmentPriceForm");
-    const newPrice = parseFormattedAmount(qs("#newPrice").value);
+    const priceValue = qs("#newPrice").value.trim();
+    const newPrice = parseFormattedAmount(priceValue);
     const reason = qs("#editReason").value.trim();
 
-    if (newPrice < 0) {
+    if (!priceValue || Number.isNaN(newPrice) || newPrice < 0) {
       showToast("السعر يجب أن يكون أكبر من أو يساوي صفر", "error");
       return;
     }
@@ -357,12 +406,24 @@ function openApartmentPriceEditModal(clientId, apartmentId, apartmentCode, curre
         reason: reason,
       });
       closeModal();
-      showToast("تم تعديل السعر بنجاح", "success");
-      await loadDashboard();
+      showToast("تم تعديل سعر الشقة بنجاح", "success");
+      await refreshClientsAfterApartmentPriceUpdate();
     } catch (error) {
       showToast(error.message, "error");
     }
   });
+}
+
+async function refreshClientsAfterApartmentPriceUpdate() {
+  if (APP_STATE.session?.role === "owner" && APP_STATE.activeDashboardView === "operations") {
+    invalidateDashboardCache(["ownerClients"]);
+    await loadDashboardDataset("ownerClients");
+    renderActiveDashboardView();
+    return;
+  }
+  invalidateDashboardCache(["clients"]);
+  await loadDashboardDataset("clients");
+  renderActiveDashboardView();
 }
 
 function formatAmountInput(value) {
