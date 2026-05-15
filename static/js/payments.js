@@ -241,6 +241,7 @@ function paymentClientOptionLabel(client) {
 async function savePayment(event) {
   event.preventDefault();
   const form = qs("#paymentForm");
+  const submitButton = form.querySelector("button[type='submit']");
   const paymentId = form.dataset.paymentId;
   const amount = parseFormattedAmount(qs("#paymentAmount").value);
   const payload = {
@@ -255,11 +256,12 @@ async function savePayment(event) {
     notes: qs("#paymentNotes").value.trim(),
   };
   try {
+    setButtonLoading(submitButton, true, paymentId ? "جاري تعديل الدفعة..." : "جاري إضافة الدفعة...");
     if (paymentId) await AdminAPI.updatePayment(paymentId, payload);
     else await AdminAPI.createPayment(payload);
     closeModal();
     showToast("تم الحفظ بنجاح.", "success");
-    await loadDashboard();
+    await refreshPaymentsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الدفعات..." });
   } catch (error) {
     if (String(error.message || "").includes("أكبر من المبلغ المتبقي") && confirm("المبلغ المدخل أكبر من المبلغ المتبقي. هل تريد المتابعة؟")) {
       payload.allow_overpay = true;
@@ -267,10 +269,12 @@ async function savePayment(event) {
       else await AdminAPI.createPayment(payload);
       closeModal();
       showToast("تم الحفظ بنجاح.", "success");
-      await loadDashboard();
+      await refreshPaymentsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الدفعات..." });
       return;
     }
     showToast(error.message, "error");
+  } finally {
+    setButtonLoading(submitButton, false);
   }
 }
 
@@ -305,7 +309,7 @@ async function generateReceipt(paymentId) {
   try {
     const result = await AdminAPI.receipt(paymentId);
     if (result.url) downloadFile(result.url);
-    await loadDashboard();
+    await refreshDashboardKeys(["payments"], { render: APP_STATE.activeDashboardView === "payments" });
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -316,7 +320,7 @@ async function deletePayment(paymentId) {
   try {
     await AdminAPI.deletePayment(paymentId);
     showToast("تم حذف الدفعة بنجاح.", "success");
-    await loadDashboard();
+    await refreshPaymentsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الدفعات..." });
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -365,6 +369,7 @@ function nextInstallmentNumber() {
 async function saveInstallment(event) {
   event.preventDefault();
   const form = qs("#installmentForm");
+  const submitButton = form.querySelector("button[type='submit']");
   const installmentId = form.dataset.installmentId;
   const payload = {
     client_id: qs("#installmentClient").value,
@@ -376,13 +381,16 @@ async function saveInstallment(event) {
     notes: qs("#installmentNotes").value.trim(),
   };
   try {
+    setButtonLoading(submitButton, true, "جاري حفظ القسط...");
     if (installmentId) await AdminAPI.updateInstallment(installmentId, payload);
     else await AdminAPI.createInstallment(payload);
     closeModal();
     showToast("تم حفظ القسط بنجاح.", "success");
-    await loadDashboard();
+    await refreshInstallmentsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الأقساط..." });
   } catch (error) {
     showToast(error.message, "error");
+  } finally {
+    setButtonLoading(submitButton, false);
   }
 }
 
@@ -391,7 +399,7 @@ async function deleteInstallment(installmentId) {
   try {
     await AdminAPI.deleteInstallment(installmentId);
     showToast("تم حذف القسط بنجاح.", "success");
-    await loadDashboard();
+    await refreshInstallmentsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الأقساط..." });
   } catch (error) {
     showToast(error.message, "error");
   }

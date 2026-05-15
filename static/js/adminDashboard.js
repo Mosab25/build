@@ -415,15 +415,7 @@ function openApartmentPriceEditModal(clientId, apartmentId, apartmentCode, curre
 }
 
 async function refreshClientsAfterApartmentPriceUpdate() {
-  if (APP_STATE.session?.role === "owner" && APP_STATE.activeDashboardView === "operations") {
-    invalidateDashboardCache(["ownerClients"]);
-    await loadDashboardDataset("ownerClients");
-    renderActiveDashboardView();
-    return;
-  }
-  invalidateDashboardCache(["clients"]);
-  await loadDashboardDataset("clients");
-  renderActiveDashboardView();
+  await refreshClientsAfterPriceChange({ loadingSelector: "#dashboardContent .data-panel:last-child", loadingText: "جاري تحديث بيانات العميل..." });
 }
 
 function formatAmountInput(value) {
@@ -447,7 +439,7 @@ async function deleteClientGroup(clientIds, clientName) {
       await AdminAPI.deleteClient(id);
     }
     showToast("تم حذف العميل ووحداته بنجاح.", "success");
-    await loadDashboard();
+    await refreshClientsAfterChange({ loadingSelector: "#dashboardContent .data-panel:last-child", loadingText: "جاري تحديث العملاء..." });
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -459,7 +451,7 @@ async function cancelClientReservation(clientId) {
   try {
     await AdminAPI.cancelClient(clientId, reason);
     showToast("تم إلغاء الحجز بنجاح", "success");
-    await loadDashboard();
+    await refreshClientsAfterChange({ loadingSelector: "#dashboardContent .data-panel:last-child", loadingText: "جاري تحديث العملاء..." });
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -561,7 +553,7 @@ async function saveClient(event) {
 
     closeModal();
     showToast("تم حفظ العميل بنجاح.", "success");
-    await loadDashboard();
+    await refreshClientsAfterChange({ loadingSelector: "#dashboardContent .data-panel:last-child", loadingText: "جاري تحديث العملاء..." });
   } catch (error) {
     showToast(error.message, "error");
   } finally {

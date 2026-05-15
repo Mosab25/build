@@ -32,6 +32,9 @@ async function bindUpdatesAdminPanel() {
 async function loadUpdatesAdminList(force = false) {
   const target = qs("#updatesAdminList");
   try {
+    if (force) {
+      target.innerHTML = LoadingState("جاري تحديث المنشورات...");
+    }
     if (force && updatesAdminFilter === "active") invalidateDashboardCache(["updates"]);
     if (updatesAdminFilter === "active" && !isDashboardLoaded("updates")) {
       await ensureDashboardData(["updates"], APP_STATE.activeDashboardView);
@@ -75,16 +78,30 @@ async function loadUpdatesAdminList(force = false) {
       </div>
     `;
     qsa("[data-update-publish]").forEach((button) => button.addEventListener("click", async () => {
-      await UpdatesAPI.publish(button.dataset.updatePublish);
-      showToast("تم نشر التحديث بنجاح.", "success");
-      await loadUpdatesAdminList(true);
-      await initLatestUpdates();
+      setButtonLoading(button, true, "جاري النشر...");
+      try {
+        await UpdatesAPI.publish(button.dataset.updatePublish);
+        showToast("تم نشر التحديث بنجاح.", "success");
+        await loadUpdatesAdminList(true);
+        await initLatestUpdates();
+      } catch (error) {
+        showToast(error.message, "error");
+      } finally {
+        setButtonLoading(button, false);
+      }
     }));
     qsa("[data-update-unpublish]").forEach((button) => button.addEventListener("click", async () => {
-      await UpdatesAPI.unpublish(button.dataset.updateUnpublish);
-      showToast("تم الحفظ بنجاح.", "success");
-      await loadUpdatesAdminList(true);
-      await initLatestUpdates();
+      setButtonLoading(button, true, "جاري إلغاء النشر...");
+      try {
+        await UpdatesAPI.unpublish(button.dataset.updateUnpublish);
+        showToast("تم الحفظ بنجاح.", "success");
+        await loadUpdatesAdminList(true);
+        await initLatestUpdates();
+      } catch (error) {
+        showToast(error.message, "error");
+      } finally {
+        setButtonLoading(button, false);
+      }
     }));
     qsa("[data-update-remove]").forEach((button) => button.addEventListener("click", () => {
       openRemoveUpdateModal(button.dataset.updateRemove, button.dataset.updateTitle);
@@ -115,7 +132,9 @@ function openUpdateForm() {
 
 async function saveUpdate(event) {
   event.preventDefault();
+  const submitButton = qs("#updateForm button[type='submit']");
   try {
+    setButtonLoading(submitButton, true, "جاري حفظ المنشور...");
     let mediaUrl = "";
     const status = qs("#updateStatus").value;
     const file = qs("#updateFile").files[0];
@@ -138,7 +157,15 @@ async function saveUpdate(event) {
     await initLatestUpdates();
   } catch (error) {
     showToast(error.message, "error");
+  } finally {
+    setButtonLoading(submitButton, false);
   }
+}
+
+function removeUpdateFromActiveCache(updateId) {
+  const cachedUpdates = (APP_STATE.dashboard?.updates || []).filter((item) => item.id !== updateId);
+  cacheDashboardData("updates", cachedUpdates, APP_STATE.dashboard?.updatesPagination || APP_STATE.cache?.updatesMeta || null);
+  qsa("[data-update-remove]").find((button) => button.dataset.updateRemove === updateId)?.closest("tr")?.remove();
 }
 
 function openRemoveUpdateModal(updateId, updateTitle) {
@@ -162,14 +189,19 @@ function openRemoveUpdateModal(updateId, updateTitle) {
   qs("#removeUpdateForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const reason = qs("#removeReason").value.trim();
+    const submitButton = qs("#removeUpdateForm button[type='submit']");
     try {
+      setButtonLoading(submitButton, true, "جاري الإزالة...");
       await UpdatesAPI.remove(updateId, { reason });
+      removeUpdateFromActiveCache(updateId);
       closeModal();
       showToast("تم إزالة المنشور بنجاح", "success");
       await loadUpdatesAdminList(true);
       await initLatestUpdates();
     } catch (error) {
       showToast(error.message, "error");
+    } finally {
+      setButtonLoading(submitButton, false);
     }
   });
 }

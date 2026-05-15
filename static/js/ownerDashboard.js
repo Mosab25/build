@@ -131,7 +131,7 @@ function OwnerMoneyItem(label, value, tone = "", money = true) {
 
 function bindOwnerDashboard() {
   qs("#ownerRefreshButton")?.addEventListener("click", async () => {
-    await loadDashboard();
+    await refreshCurrentDashboardView();
     showToast("تم تحديث بيانات لوحة المالك.", "success");
   });
   qsa("[data-owner-quick-view]").forEach((button) => {
@@ -345,7 +345,7 @@ async function handleOwnerDealClick(event) {
       await OwnerAPI.requestRevision(dealId, notes);
       showToast("تم إرسال طلب التعديل إلى المساعد.", "success");
     }
-    await loadDashboard();
+    await refreshDashboardKeys(["ownerDeals", "ownerClients", "ownerApartments"], { summary: true, loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الديلات..." });
   } catch (error) {
     showToast(error.message || "حدث خطأ أثناء تنفيذ العملية.", "error");
   }
@@ -407,7 +407,7 @@ function openOwnerDealEdit(dealId) {
       });
       closeModal();
       showToast("تم حفظ التغييرات بنجاح.", "success");
-      await loadDashboard();
+      await refreshDashboardKeys(["ownerDeals", "ownerApartments"], { summary: true, loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الديلات..." });
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -738,7 +738,7 @@ async function cancelOwnerClientGroup(clientIds, clientName) {
     }
     closeModal();
     showToast("تم إلغاء الحجز وتحرير الشقة بنجاح.", "success");
-    await loadDashboard();
+    await refreshClientsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث العملاء..." });
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -769,7 +769,7 @@ async function deleteOwnerClientGroup(clientIds, clientName) {
       }
       closeModal();
       showToast("تم إلغاء الحجز وتحرير الشقة بنجاح.", "success");
-      await loadDashboard();
+      await refreshClientsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث العملاء..." });
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -786,7 +786,7 @@ async function deleteOwnerClientGroup(clientIds, clientName) {
       }
       closeModal();
       showToast("تم حذف العميل مع السجل المالي بنجاح.", "success");
-      await loadDashboard();
+      await refreshClientsAfterChange({ loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث العملاء..." });
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -895,7 +895,7 @@ function openOwnerApartmentEdit(apartmentId) {
       } else {
         showToast("تم حفظ التغييرات بنجاح.", "success");
       }
-      await loadDashboard();
+      await refreshDashboardKeys(createdClient ? ["ownerClients", "ownerApartments"] : ["ownerApartments"], { summary: true, loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الشقق..." });
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -1114,7 +1114,7 @@ async function createAccountUser(event) {
       password: qs("#accountPassword").value || "Assistant@12345",
     });
     showToast("تم إضافة الحساب بنجاح.", "success");
-    await loadDashboard();
+    await refreshDashboardKeys(["users"], { render: false, loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الحسابات..." });
     APP_STATE.ownerSettingsTab = "accounts";
     renderActiveDashboardView();
   } catch (error) {
@@ -1151,7 +1151,7 @@ function openAccountEdit(userId) {
       });
       closeModal();
       showToast("تم حفظ بيانات الحساب.", "success");
-      await loadDashboard();
+      await refreshDashboardKeys(["users"], { loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الحسابات..." });
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -1174,7 +1174,7 @@ function openAccountPasswordReset(userId) {
       await AdminAPI.resetUserPassword(userId, { temporary_password: form.get("temporary_password") });
       closeModal();
       showToast("تمت إعادة تعيين كلمة المرور.", "success");
-      await loadDashboard();
+      await refreshDashboardKeys(["users"], { loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الحسابات..." });
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -1187,7 +1187,7 @@ async function toggleAccountStatus(userId, enabled) {
     if (enabled) await AdminAPI.enableUser(userId);
     else await AdminAPI.disableUser(userId);
     showToast(enabled ? "تم تفعيل الحساب." : "تم إيقاف الحساب.", "success");
-    await loadDashboard();
+    await refreshDashboardKeys(["users"], { loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الحسابات..." });
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -1243,7 +1243,7 @@ async function saveOwnerSettingsForm(event) {
     if (type === "priceSettings") await OwnerAPI.updatePriceSettings(data);
     else await OwnerAPI.updateSettings({ [type]: data });
     showToast("تم حفظ التغييرات بنجاح.", "success");
-    await loadDashboard();
+    await refreshDashboardKeys(["ownerSettings"], { loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الإعدادات..." });
   } catch (error) {
     showToast(error.message || "حدث خطأ أثناء حفظ الإعدادات.", "error");
   }
@@ -1261,7 +1261,7 @@ async function createAssistantUser(event) {
       role: "assistant",
     });
     showToast("تم إضافة المساعد بنجاح.", "success");
-    await loadDashboard();
+    await refreshDashboardKeys(["users"], { render: false, loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الحسابات..." });
     APP_STATE.ownerSettingsTab = "assistants";
     renderActiveDashboardView();
   } catch (error) {
