@@ -119,6 +119,7 @@ const AdminAPI = {
     }
   },
   updateApartment: (id, payload) => apiPatch(`/api/admin/apartments/${id}`, payload),
+  updateApartmentPrice: (clientId, apartmentId, payload) => apiPatch(`/api/admin/clients/${clientId}/apartments/${apartmentId}/price`, payload),
   payments: async (page = 1, limit = 20) => listPayload(await apiGet(`/api/admin/payments?page=${page}&limit=${limit}`), "payments"),
   createPayment: (payload) => apiPost("/api/admin/payments", payload),
   updatePayment: (id, payload) => apiPatch(`/api/admin/payments/${id}`, payload),
@@ -190,7 +191,7 @@ const UpdatesAPI = {
   list: async (page = 1, limit = 20) => listPayload(await apiGet(`/api/admin/project-updates?page=${page}&limit=${limit}`), "updates"),
   create: (payload) => apiPost("/api/admin/project-updates", payload),
   update: (id, payload) => apiPatch(`/api/admin/project-updates/${id}`, payload),
-  remove: (id) => apiDelete(`/api/admin/project-updates/${id}`),
+  remove: (id, payload = {}) => apiRequest(`/api/admin/project-updates/${id}`, { method: "DELETE", body: JSON.stringify(payload) }),
   publish: (id) => apiPost(`/api/admin/project-updates/${id}/publish`),
   unpublish: (id) => apiPost(`/api/admin/project-updates/${id}/unpublish`),
   upload: (file) => uploadFile("/api/admin/uploads/project-update-media", file),

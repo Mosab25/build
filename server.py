@@ -2725,15 +2725,15 @@ def add_apartment_to_client(client_id: str) -> Response:
     if not apartment_id:
         return jsonify({"error": "validation", "message": "معرف الشقة مطلوب."}), 400
     with db() as conn:
-        client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        client = conn.execute("SELECT * FROM clients WHERE id = %s", (client_id,)).fetchone()
         if not client:
             return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
-        apartment = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
+        apartment = conn.execute("SELECT * FROM apartments WHERE id = %s", (apartment_id,)).fetchone()
         if not apartment:
             return jsonify({"error": "not_found", "message": "الشقة غيرموجودة."}), 404
         # Check if apartment is already linked to another active client
         existing_link = conn.execute(
-            "SELECT client_id FROM client_apartments WHERE apartment_id = ? AND status != 'cancelled'",
+            "SELECT client_id FROM client_apartments WHERE apartment_id = %s AND status != 'cancelled'",
             (apartment_id,),
         ).fetchone()
         if existing_link and existing_link["client_id"] != client_id:
@@ -2745,13 +2745,13 @@ def add_apartment_to_client(client_id: str) -> Response:
         conn.execute(
             """
             INSERT INTO client_apartments (id, client_id, apartment_id, unit_price, status, assigned_at, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, 'active', %s, %s, %s, %s)
             """,
             (link_id, client_id, apartment_id, unit_price, now_iso(), admin["id"], now_iso(), now_iso()),
         )
         recalc_client(conn, client_id)
         audit(conn, admin["id"], "link_apartment", "client", client_id, f"تمت إضافة شقة {apartment['unit_code']} للعميل", None, {"apartment_id": apartment_id, "unit_price": unit_price})
-        row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        row = conn.execute("SELECT * FROM clients WHERE id = %s", (client_id,)).fetchone()
         return jsonify({"client": client_payload(conn, row)})
 
 
@@ -2763,33 +2763,82 @@ def remove_apartment_from_client(client_id: str, apartment_id: str) -> Response:
     payload = request.get_json(silent=True) or {}
     reason = (payload.get("reason") or "").strip()
     with db() as conn:
-        client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        client = conn.execute("SELECT * FROM clients WHERE id = %s", (client_id,)).fetchone()
         if not client:
             return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
         # Mark the link as cancelled instead of deleting
         conn.execute(
-            "UPDATE client_apartments SET status = 'cancelled', updated_at = ? WHERE client_id = ? AND apartment_id = ?",
+            "UPDATE client_apartments SET status = 'cancelled', updated_at = %s WHERE client_id = %s AND apartment_id = %s",
             (now_iso(), client_id, apartment_id),
         )
         # Check if any other client has this apartment linked
         other_client = conn.execute(
-            "SELECT client_id FROM client_apartments WHERE apartment_id = ? AND client_id != ? AND status != 'cancelled'",
+            "SELECT client_id FROM client_apartments WHERE apartment_id = %s AND client_id != %s AND status != 'cancelled'",
             (apartment_id, client_id),
         ).fetchone()
         if not other_client:
             # Release apartment if no other confirmed payments
             has_confirmed_payments = conn.execute(
-                "SELECT id FROM payments WHERE apartment_id = ? AND payment_status = 'confirmed'",
+                "SELECT id FROM payments WHERE apartment_id = %s AND payment_status = 'confirmed'",
                 (apartment_id,),
             ).fetchone()
             if not has_confirmed_payments:
                 conn.execute(
-                    "UPDATE apartments SET status = 'available', assigned_client_id = NULL, updated_at = ? WHERE id = ?",
+                    "UPDATE apartments SET status = 'available', assigned_client_id = NULL, updated_at = %s WHERE id = %s",
                     (now_iso(), apartment_id),
                 )
         recalc_client(conn, client_id)
         audit(conn, admin["id"], "unlink_apartment", "client", client_id, f"تمت إزالة شقة من العميل (السبب: {reason})" if reason else "تمت إزالة شقة من العميل", {"apartment_id": apartment_id}, None)
-        row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        row = conn.execute("SELECT * FROM clients WHERE id = %s", (client_id,)).fetchone()
+        return jsonify({"client": client_payload(conn, row)})
+
+
+@app.patch("/api/admin/clients/<client_id>/apartments/<apartment_id>/price")
+def update_apartment_price(client_id: str, apartment_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    unit_price = payload.get("unit_price") or payload.get("unitPrice")
+    reason = (payload.get("reason") or "").strip()
+    if unit_price is None:
+        return jsonify({"error": "validation", "message": "السعر الجديد مطلوب."}), 400
+    try:
+        unit_price = float(unit_price)
+    except (ValueError, TypeError):
+        return jsonify({"error": "validation", "message": "السعر يجب أن يكون رقمًا."}), 400
+    if unit_price < 0:
+        return jsonify({"error": "validation", "message": "السعر يجب أن يكون أكبر من أو يساوي صفر."}), 400
+    if not reason:
+        return jsonify({"error": "validation", "message": "سبب التعديل مطلوب."}), 400
+    with db() as conn:
+        client = conn.execute("SELECT * FROM clients WHERE id = %s", (client_id,)).fetchone()
+        if not client:
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
+        apartment = conn.execute("SELECT * FROM apartments WHERE id = %s", (apartment_id,)).fetchone()
+        if not apartment:
+            return jsonify({"error": "not_found", "message": "الشقة غير موجودة."}), 404
+        # Get current link
+        link = conn.execute(
+            "SELECT * FROM client_apartments WHERE client_id = %s AND apartment_id = %s AND status != 'cancelled'",
+            (client_id, apartment_id)
+        ).fetchone()
+        if not link:
+            return jsonify({"error": "not_found", "message": "الشقة غير مرتبطة بهذا العميل."}), 404
+        old_price = float(link.get("unit_price") or 0)
+        # Update the price
+        conn.execute(
+            "UPDATE client_apartments SET unit_price = %s, updated_at = %s WHERE client_id = %s AND apartment_id = %s",
+            (unit_price, now_iso(), client_id, apartment_id)
+        )
+        # Recalculate client totals
+        recalc_client(conn, client_id)
+        # Audit log
+        audit(conn, admin["id"], "update_apartment_price", "client_apartment", link["id"],
+              f"تم تعديل سعر شقة {apartment['unit_code']} للعميل {client['full_name']}: {reason}",
+              {"old_price": old_price, "unit_price": old_price},
+              {"new_price": unit_price, "unit_price": unit_price})
+        row = conn.execute("SELECT * FROM clients WHERE id = %s", (client_id,)).fetchone()
         return jsonify({"client": client_payload(conn, row)})
 
 
@@ -4347,22 +4396,34 @@ def update_project_update(update_id: str) -> Response:
 
 @app.delete("/api/admin/project-updates/<update_id>")
 def delete_project_update(update_id: str) -> Response:
-    """Delete a project update"""
-    admin = require_admin()
+    """Archive/delete a project update"""
+    admin = require_admin({"owner", "admin"})
     if not isinstance(admin, dict):
         return admin
-    
+
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or "").strip()
+
     with db() as conn:
         # Check if update exists
-        existing = conn.execute("SELECT title FROM project_updates WHERE id = ?", (update_id,)).fetchone()
+        existing = conn.execute("SELECT * FROM project_updates WHERE id = %s", (update_id,)).fetchone()
         if not existing:
             return jsonify({"error": "التحديث غير موجود"}), 404
-        
-        conn.execute("DELETE FROM project_updates WHERE id = ?", (update_id,))
-        
-        audit(conn, admin['id'], 'delete', 'project_update', update_id, f"تم حذف تحديث: {existing['title']}")
-        
-        return jsonify({"message": "تم حذف التحديث بنجاح"})
+
+        # Archive instead of hard delete
+        conn.execute(
+            "UPDATE project_updates SET status = 'archived', updated_at = %s WHERE id = %s",
+            (now_iso(), update_id)
+        )
+
+        description = f"تم أرشفة تحديث: {existing['title']}"
+        if reason:
+            description += f" (السبب: {reason})"
+        audit(conn, admin['id'], 'archive', 'project_update', update_id, description,
+              {"old_status": existing.get("status")},
+              {"new_status": "archived", "reason": reason})
+
+        return jsonify({"message": "تم إزالة المنشور بنجاح"})
 
 @app.post("/api/admin/project-updates/<update_id>/publish")
 def publish_project_update(update_id: str) -> Response:

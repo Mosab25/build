@@ -136,9 +136,9 @@ function renderClientsTable(clients) {
         <td data-label="المتبقي" data-money>${formatMoney(group.remainingAmount)}</td>
         <td data-label="الدفع">${StatusBadge(group.paymentStatus)}</td>
         <td data-label="إجراءات" class="table-actions">
-          <button class="btn ghost small" data-client-payment="${group.ids[0]}" type="button">دفعة</button>
-          <button class="btn secondary small" data-client-add-unit="${group.ids[0]}" type="button">إضافة شقة أخرى</button>
-          <button class="btn danger small" data-client-delete-group="${escapeHTML(group.ids.join(","))}" data-client-name="${escapeHTML(group.name)}" type="button">حذف</button>
+          <button class="btn ghost small" data-client-view="${group.ids[0]}" type="button">عرض الملف</button>
+          <button class="btn secondary small" data-client-payment="${group.ids[0]}" type="button">إضافة دفعة</button>
+          <button class="btn ghost small" data-client-more="${escapeHTML(group.ids.join(","))}" data-client-name="${escapeHTML(group.name)}" type="button">المزيد</button>
         </td>
       </tr>`).join("")}</tbody>
     </table></div>
@@ -150,13 +150,24 @@ function bindAdminDashboard() {
     await ensureDashboardData(["clients", "apartments"], APP_STATE.activeDashboardView);
     openPaymentForm();
   });
+  qsa("[data-client-view]").forEach((button) => button.addEventListener("click", () => openClientView(button.dataset.clientView)));
   qsa("[data-client-payment]").forEach((button) => button.addEventListener("click", () => openPaymentForm(button.dataset.clientPayment)));
+  qsa("[data-client-more]").forEach((button) => button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const clientIds = button.dataset.clientMore.split(",");
+    const clientName = button.dataset.clientName;
+    openClientMoreMenu(button, clientIds, clientName);
+  }));
   qsa("[data-client-add-unit]").forEach((button) => button.addEventListener("click", () => openClientFormForExistingClient(button.dataset.clientAddUnit)));
   qsa("[data-client-delete-group]").forEach((button) => button.addEventListener("click", () => deleteClientGroup(button.dataset.clientDeleteGroup, button.dataset.clientName)));
   qsa("[data-apartment-id]").forEach((button) => button.addEventListener("click", () => openClientFormFromApartment(button.dataset.apartmentId)));
   qs("#newClientButton")?.addEventListener("click", async () => {
     await ensureDashboardData(["apartments"], APP_STATE.activeDashboardView);
     openClientForm();
+  });
+  // Close dropdowns when clicking outside
+  document.addEventListener("click", () => {
+    qsa(".client-more-dropdown").forEach((dropdown) => dropdown.remove());
   });
 }
 
@@ -181,6 +192,190 @@ function openClientFormForExistingClient(clientId) {
   });
 }
 
+function openClientView(clientId) {
+  const client = (APP_STATE.dashboard.clients || []).find((item) => item.id === clientId);
+  if (!client) return;
+  openModal(`
+    <span class="eyebrow">العملاء</span>
+    <h2>${escapeHTML(client.name)}</h2>
+    <div class="client-details">
+      <p><strong>الكود:</strong> ${escapeHTML(client.code)}</p>
+      <p><strong>الهاتف:</strong> ${escapeHTML(client.phone || "-")}</p>
+      <p><strong>الإجمالي:</strong> ${formatMoney(client.totalAmount)}</p>
+      <p><strong>المدفوع:</strong> ${formatMoney(client.paidAmount)}</p>
+      <p><strong>المتبقي:</strong> ${formatMoney(client.remainingAmount)}</p>
+      <p><strong>حالة السداد:</strong> ${StatusBadge(client.paymentStatus)}</p>
+      ${client.apartments && client.apartments.length ? `
+        <h3>الشقق المرتبطة</h3>
+        <ul>
+          ${client.apartments.map((apt) => `
+            <li>
+              ${escapeHTML(apt.unitCode)} - ${formatMoney(apt.price)} - ${StatusBadge(apt.status)}
+              <button class="btn ghost small" data-edit-price="${client.id}" data-apartment-id="${apt.id}" data-apartment-code="${escapeHTML(apt.unitCode)}" data-current-price="${apt.price}" type="button">تعديل السعر</button>
+            </li>
+          `).join("")}
+        </ul>
+      ` : ""}
+    </div>
+  `);
+  qsa("[data-edit-price]").forEach((button) => button.addEventListener("click", () => {
+    openApartmentPriceEditModal(button.dataset.editPrice, button.dataset.apartmentId, button.dataset.apartmentCode, button.dataset.currentPrice);
+  }));
+}
+
+function openClientMoreMenu(button, clientIds, clientName) {
+  const clientId = clientIds[0];
+  const client = (APP_STATE.dashboard.clients || []).find((item) => item.id === clientId);
+  if (!client) return;
+
+  // Remove existing dropdowns
+  qsa(".client-more-dropdown").forEach((dropdown) => dropdown.remove());
+
+  const dropdown = document.createElement("div");
+  dropdown.className = "client-more-dropdown";
+  dropdown.style.position = "absolute";
+  dropdown.style.zIndex = "1000";
+  dropdown.style.background = "white";
+  dropdown.style.border = "1px solid #ddd";
+  dropdown.style.borderRadius = "4px";
+  dropdown.style.padding = "8px 0";
+  dropdown.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)";
+
+  const rect = button.getBoundingClientRect();
+  dropdown.style.top = `${rect.bottom + window.scrollY + 4}px`;
+  dropdown.style.left = `${rect.left + window.scrollX}px`;
+
+  dropdown.innerHTML = `
+    <button class="dropdown-item" data-action="add-unit" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">إضافة شقة</button>
+    ${client.apartments && client.apartments.length > 0 ? `
+      <button class="dropdown-item" data-action="edit-price" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">تعديل سعر شقة</button>
+    ` : ""}
+    <button class="dropdown-item" data-action="whatsapp" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;">واتساب</button>
+    <hr style="margin:8px 0;border:none;border-top:1px solid #eee;">
+    <button class="dropdown-item danger" data-action="cancel" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;color:#d32f2f;">إلغاء الحجز</button>
+    <button class="dropdown-item danger" data-action="delete" style="display:block;width:100%;padding:8px 16px;text-align:right;border:none;background:none;cursor:pointer;color:#d32f2f;">حذف السجل</button>
+  `;
+
+  document.body.appendChild(dropdown);
+
+  dropdown.querySelectorAll(".dropdown-item").forEach((item) => {
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const action = item.dataset.action;
+      dropdown.remove();
+      if (action === "add-unit") openClientFormForExistingClient(clientId);
+      else if (action === "edit-price") openApartmentPriceSelectModal(clientId, clientName);
+      else if (action === "whatsapp") {
+        const phone = client.phone || "";
+        if (phone) window.open(`https://wa.me/${phone.replace(/\D/g, "")}`, "_blank");
+        else showToast("لا يوجد رقم هاتف", "error");
+      }
+      else if (action === "cancel") cancelClientReservation(clientId);
+      else if (action === "delete") deleteClientGroup(clientIds.join(","), clientName);
+    });
+  });
+}
+
+function openApartmentPriceSelectModal(clientId, clientName) {
+  const client = (APP_STATE.dashboard.clients || []).find((item) => item.id === clientId);
+  if (!client || !client.apartments || !client.apartments.length) {
+    showToast("لا توجد شقق مرتبطة بهذا العميل", "error");
+    return;
+  }
+
+  openModal(`
+    <span class="eyebrow">العملاء</span>
+    <h2>تعديل سعر شقة</h2>
+    <p>العميل: ${escapeHTML(clientName)}</p>
+    <div class="form-field">
+      <label for="apartmentSelect">اختر الشقة</label>
+      <select id="apartmentSelect">
+        ${client.apartments.map((apt) => `
+          <option value="${apt.id}" data-price="${apt.price}" data-code="${escapeHTML(apt.unitCode)}">
+            ${escapeHTML(apt.unitCode)} - ${formatMoney(apt.price)}
+          </option>
+        `).join("")}
+      </select>
+    </div>
+    <button class="btn primary full" id="selectApartmentBtn" type="button">التالي</button>
+  `);
+
+  qs("#selectApartmentBtn")?.addEventListener("click", () => {
+    const select = qs("#apartmentSelect");
+    if (!select) return;
+    const option = select.options[select.selectedIndex];
+    const apartmentId = option.value;
+    const apartmentCode = option.dataset.code;
+    const currentPrice = parseFloat(option.dataset.price);
+    closeModal();
+    openApartmentPriceEditModal(clientId, apartmentId, apartmentCode, currentPrice);
+  });
+}
+
+function openApartmentPriceEditModal(clientId, apartmentId, apartmentCode, currentPrice) {
+  openModal(`
+    <span class="eyebrow">العملاء</span>
+    <h2>تعديل سعر الشقة</h2>
+    <p>الشقة: ${escapeHTML(apartmentCode)}</p>
+    <p>السعر الحالي: ${formatMoney(currentPrice)}</p>
+    <form id="apartmentPriceForm" class="form-grid" data-client-id="${clientId}" data-apartment-id="${apartmentId}">
+      <div class="form-field">
+        <label for="newPrice">السعر الجديد</label>
+        <input id="newPrice" type="text" inputmode="numeric" autocomplete="off" required placeholder="${formatAmountInput(currentPrice)}" />
+      </div>
+      <div class="form-field full">
+        <label for="editReason">سبب التعديل</label>
+        <textarea id="editReason" required></textarea>
+      </div>
+      <button class="btn primary full" type="submit">حفظ التعديل</button>
+    </form>
+  `);
+
+  qs("#newPrice").value = formatAmountInput(currentPrice);
+  qs("#newPrice").addEventListener("input", (event) => {
+    event.target.value = formatAmountInput(event.target.value);
+  });
+
+  qs("#apartmentPriceForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = qs("#apartmentPriceForm");
+    const newPrice = parseFormattedAmount(qs("#newPrice").value);
+    const reason = qs("#editReason").value.trim();
+
+    if (newPrice < 0) {
+      showToast("السعر يجب أن يكون أكبر من أو يساوي صفر", "error");
+      return;
+    }
+    if (!reason) {
+      showToast("سبب التعديل مطلوب", "error");
+      return;
+    }
+
+    try {
+      await AdminAPI.updateApartmentPrice(form.dataset.clientId, form.dataset.apartmentId, {
+        unit_price: newPrice,
+        reason: reason,
+      });
+      closeModal();
+      showToast("تم تعديل السعر بنجاح", "success");
+      await loadDashboard();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
+}
+
+function formatAmountInput(value) {
+  const clean = String(value).replace(/[^\d]/g, "");
+  if (!clean) return "";
+  return Number(clean).toLocaleString("en-US");
+}
+
+function parseFormattedAmount(value) {
+  const clean = String(value).replace(/[^\d]/g, "");
+  return clean ? Number(clean) : 0;
+}
+
 async function deleteClientGroup(clientIds, clientName) {
   const ids = (clientIds || "").split(",").map((value) => value.trim()).filter(Boolean);
   if (!ids.length) return;
@@ -191,6 +386,18 @@ async function deleteClientGroup(clientIds, clientName) {
       await AdminAPI.deleteClient(id);
     }
     showToast("تم حذف العميل ووحداته بنجاح.", "success");
+    await loadDashboard();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function cancelClientReservation(clientId) {
+  const reason = prompt("سبب الإلغاء:");
+  if (!reason) return;
+  try {
+    await AdminAPI.cancelClient(clientId, reason);
+    showToast("تم إلغاء الحجز بنجاح", "success");
     await loadDashboard();
   } catch (error) {
     showToast(error.message, "error");

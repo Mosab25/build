@@ -36,10 +36,11 @@ async function loadUpdatesAdminList(force = false) {
               <td>${escapeHTML(item.title)}</td>
               <td>${formatDate(item.update_date)}</td>
               <td>${StatusBadge(item.status)}</td>
-              <td>
+              <td class="table-actions">
                 ${item.status === "published"
                   ? `<button class="btn ghost small" data-update-unpublish="${item.id}">إلغاء النشر</button>`
                   : `<button class="btn primary small" data-update-publish="${item.id}">نشر</button>`}
+                <button class="btn danger small" data-update-remove="${item.id}" data-update-title="${escapeHTML(item.title)}" type="button">إزالة المنشور</button>
               </td>
             </tr>
           `).join("")}</tbody>
@@ -57,6 +58,9 @@ async function loadUpdatesAdminList(force = false) {
       showToast("تم الحفظ بنجاح.", "success");
       await loadUpdatesAdminList(true);
       await initLatestUpdates();
+    }));
+    qsa("[data-update-remove]").forEach((button) => button.addEventListener("click", () => {
+      openRemoveUpdateModal(button.dataset.updateRemove, button.dataset.updateTitle);
     }));
   } catch (error) {
     target.innerHTML = ErrorState();
@@ -108,4 +112,37 @@ async function saveUpdate(event) {
   } catch (error) {
     showToast(error.message, "error");
   }
+}
+
+function openRemoveUpdateModal(updateId, updateTitle) {
+  openModal(`
+    <span class="eyebrow">المنشورات</span>
+    <h2>إزالة المنشور</h2>
+    <p>هل أنت متأكد من إزالة هذا المنشور؟ لن يظهر للعملاء بعد الإزالة.</p>
+    <p><strong>العنوان:</strong> ${escapeHTML(updateTitle)}</p>
+    <form id="removeUpdateForm" class="form-grid">
+      <div class="form-field full">
+        <label for="removeReason">سبب الإزالة (اختياري)</label>
+        <textarea id="removeReason" placeholder="اكتب سبب الإزالة إن وجد..."></textarea>
+      </div>
+      <button class="btn danger full" type="submit">تأكيد الإزالة</button>
+      <button class="btn ghost full" type="button" id="cancelRemoveBtn">تراجع</button>
+    </form>
+  `);
+
+  qs("#cancelRemoveBtn")?.addEventListener("click", closeModal);
+
+  qs("#removeUpdateForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const reason = qs("#removeReason").value.trim();
+    try {
+      await UpdatesAPI.remove(updateId, { reason });
+      closeModal();
+      showToast("تم إزالة المنشور بنجاح", "success");
+      await loadUpdatesAdminList(true);
+      await initLatestUpdates();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
 }
