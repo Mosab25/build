@@ -1,11 +1,17 @@
 async function initLatestUpdates() {
   const grid = qs("#updatesGrid");
   if (!grid) return;
-  grid.innerHTML = LoadingState("جاري تحميل تحديثات المشروع...");
+  renderUpdatesFallback(grid);
+  scheduleAfterFirstPaint(loadLatestUpdates);
+}
+
+async function loadLatestUpdates() {
+  const grid = qs("#updatesGrid");
+  if (!grid) return;
   try {
     const updates = await PublicAPI.publishedUpdates();
     if (!updates.length) {
-      grid.innerHTML = EmptyState("لا توجد تحديثات منشورة حاليًا.", "سيتم عرض تحديثات المشروع هنا فور نشرها من الإدارة.");
+      renderUpdatesFallback(grid);
       return;
     }
     grid.innerHTML = updates.map((update) => `
@@ -20,8 +26,12 @@ async function initLatestUpdates() {
       </article>
     `).join("");
   } catch (error) {
-    grid.innerHTML = ErrorState();
+    renderUpdatesFallback(grid);
   }
+}
+
+function renderUpdatesFallback(grid) {
+  grid.innerHTML = EmptyState("لا توجد تحديثات منشورة حاليا.", "سيتم عرض تحديثات المشروع هنا فور نشرها من الإدارة.");
 }
 
 function renderUpdateMedia(update) {

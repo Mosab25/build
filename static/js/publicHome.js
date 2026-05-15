@@ -1,5 +1,11 @@
 async function initPublicHome() {
   initProjectCountdown();
+  renderPublicStats({});
+  renderAvailabilityOverview([]);
+  scheduleAfterFirstPaint(loadPublicOverview);
+}
+
+async function loadPublicOverview() {
   try {
     const overview = await PublicAPI.overview();
     APP_STATE.overview = overview;
@@ -7,7 +13,7 @@ async function initPublicHome() {
     renderPublicStats(overview.summary || {});
     renderAvailabilityOverview(overview.apartments || []);
   } catch (error) {
-    qs("#publicStats").innerHTML = ErrorState();
+    APP_STATE.overview = null;
   }
 }
 

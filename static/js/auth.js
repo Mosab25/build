@@ -20,13 +20,13 @@ async function handleStaffLogin(event) {
     APP_STATE.session = result.admin;
     qs("#staffLoginModal").hidden = true;
     qs("#staffLoginForm").reset();
+    showStaffApp();
     if (result.must_change_password || result.admin?.mustChangePassword) {
-      showStaffApp();
       openMustChangePasswordDialog();
       return;
     }
-    await loadDashboard();
-    showStaffApp();
+    renderActiveDashboardView();
+    scheduleAfterFirstPaint(() => loadDashboard().catch((error) => showToast(error.message, "error")));
   } catch (error) {
     message.textContent = error.message || "يرجى مراجعة بيانات الدخول.";
   } finally {
@@ -43,8 +43,9 @@ async function restoreSession() {
       openMustChangePasswordDialog();
       return;
     }
-    await loadDashboard();
     showStaffApp();
+    renderActiveDashboardView();
+    await loadDashboard();
   } catch {
     APP_STATE.session = null;
   }

@@ -1,13 +1,32 @@
 async function apiRequest(path, options = {}) {
   const isFormData = options.body instanceof FormData;
-  const response = await fetch(path, {
-    credentials: "same-origin",
-    ...options,
-    headers: {
-      ...(isFormData ? {} : { "Content-Type": "application/json" }),
-      ...(options.headers || {}),
-    },
-  });
+  const { timeoutMs, ...fetchOptions } = options;
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeoutId = timeoutMs ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
+
+  if (controller && fetchOptions.signal) {
+    fetchOptions.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+
+  let response;
+  try {
+    response = await fetch(path, {
+      credentials: "same-origin",
+      ...fetchOptions,
+      signal: controller?.signal || fetchOptions.signal,
+      headers: {
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        ...(fetchOptions.headers || {}),
+      },
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("request_timeout");
+    }
+    throw error;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
 
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json")
@@ -37,10 +56,10 @@ async function apiRequest(path, options = {}) {
   return payload;
 }
 
-const apiGet = (path) => apiRequest(path);
-const apiPost = (path, body = {}) => apiRequest(path, { method: "POST", body: JSON.stringify(body) });
-const apiPatch = (path, body = {}) => apiRequest(path, { method: "PATCH", body: JSON.stringify(body) });
-const apiDelete = (path) => apiRequest(path, { method: "DELETE" });
+const apiGet = (path, options = {}) => apiRequest(path, options);
+const apiPost = (path, body = {}, options = {}) => apiRequest(path, { ...options, method: "POST", body: JSON.stringify(body) });
+const apiPatch = (path, body = {}, options = {}) => apiRequest(path, { ...options, method: "PATCH", body: JSON.stringify(body) });
+const apiDelete = (path, options = {}) => apiRequest(path, { ...options, method: "DELETE" });
 const uploadFile = (path, file) => {
   const formData = new FormData();
   formData.append("file", file);
@@ -55,8 +74,10 @@ const AuthAPI = {
 };
 
 const PublicAPI = {
-  overview: () => apiGet("/api/public/overview"),
-  publishedUpdates: () => apiGet("/api/project-updates/published"),
+  overview: () => apiGet("/api/public/overview", { timeoutMs: 2500 }),
+  publishedUpdates: () => apiGet("/api/project-updates/published", { timeoutMs: 2500 }),
+  health: () => apiGet("/health", { timeoutMs: 1200 }),
+  healthDb: () => apiGet("/api/health-db", { timeoutMs: 1500 }),
 };
 
 const ClientAPI = {

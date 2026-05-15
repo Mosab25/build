@@ -5,9 +5,9 @@ async function initApp() {
   });
   initAuth();
   initClientPortal();
-  initGallery();
   initLatestUpdates();
   initPublicHome();
+  scheduleAfterFirstPaint(initGallery);
   if (shouldRestoreDashboardSession()) {
     restoreSession();
   }

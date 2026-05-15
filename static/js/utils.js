@@ -1,6 +1,15 @@
 const qs = (selector, scope = document) => scope.querySelector(selector);
 const qsa = (selector, scope = document) => Array.from(scope.querySelectorAll(selector));
 
+function scheduleAfterFirstPaint(callback) {
+  const run = () => window.setTimeout(callback, 0);
+  if ("requestAnimationFrame" in window) {
+    window.requestAnimationFrame(run);
+    return;
+  }
+  run();
+}
+
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",

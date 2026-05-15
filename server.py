@@ -65,6 +65,13 @@ app.config["SECRET_KEY"] = SECRET_KEY
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_DIR)
 
 
+def env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
 def ensure_runtime_directories() -> None:
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -535,8 +542,9 @@ def init_db() -> None:
         ensure_contracts_schema(conn)
         ensure_runtime_indexes(conn)
     seed_defaults()
-    with db() as conn:
-        repair_mojibake_data(conn)
+    if env_flag("REPAIR_MOJIBAKE_ON_STARTUP", False):
+        with db() as conn:
+            repair_mojibake_data(conn)
 
 
 def ensure_admin_role_schema(conn) -> None:
@@ -1660,6 +1668,21 @@ def clear_login_failures(identifier: str) -> None:
 @app.get("/")
 def index() -> Response:
     return send_file(INDEX_PATH)
+
+
+@app.get("/health")
+def health() -> Response:
+    return jsonify({"status": "ok"})
+
+
+@app.get("/api/health-db")
+def health_db() -> Response:
+    try:
+        with db() as conn:
+            conn.execute("SELECT 1").fetchone()
+        return jsonify({"status": "ok", "database": "ok"})
+    except Exception:
+        return jsonify({"status": "error", "database": "unavailable"}), 503
 
 
 @app.get("/favicon.ico")
