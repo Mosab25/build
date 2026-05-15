@@ -333,7 +333,7 @@ def status_db(value: str | None, kind: str) -> str:
                          "sold": "sold", "cancelled": "cancelled"},
         "payment": {"pending": "pending", "partially_paid": "partially_paid",
                      "fully_paid": "fully_paid", "overdue": "overdue"},
-        "payment_record": {"confirmed": "confirmed", "pending": "pending", "rejected": "rejected"},
+        "payment_record": {"confirmed": "confirmed", "pending": "pending", "rejected": "rejected", "cancelled": "cancelled"},
         "method": {"cash": "cash", "bank_transfer": "bank_transfer", "installment": "installment",
                     "office_payment": "office_payment", "other": "other"},
         "installment": {"upcoming": "upcoming", "due": "due", "paid": "paid",
@@ -398,14 +398,24 @@ def apartment_payload(row: dict) -> dict:
 
 
 def payment_payload(row: dict) -> dict:
-    return {
-        "id": row["id"], "date": row["payment_date"], "amount": row["amount"],
-        "method": status_title(row["payment_method"]),
-        "status": status_title(row["payment_status"]),
+    payload = {
+        "id": row.get("id"),
+        "clientId": row.get("client_id"),
+        "apartmentId": row.get("apartment_id"),
+        "date": row.get("payment_date"),
+        "amount": row.get("amount"),
+        "method": status_title(row.get("payment_method")),
+        "status": status_title(row.get("payment_status")),
         "reference": row.get("receipt_number") or row.get("reference_number"),
         "receiptNumber": row.get("receipt_number"),
-        "referenceNumber": row.get("reference_number"), "notes": row.get("notes"),
+        "referenceNumber": row.get("reference_number"),
+        "notes": row.get("notes"),
     }
+    if "unit_code" in row:
+        payload["unitCode"] = normalize_display_text(row.get("unit_code"))
+    if "client_name" in row:
+        payload["clientName"] = normalize_display_text(row.get("client_name"))
+    return payload
 
 
 def installment_payload(row: dict) -> dict:
@@ -455,8 +465,14 @@ def recalc_client(conn, client_id):
     paid = fetchval(conn,
         "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE client_id = %s AND payment_status = 'confirmed'",
         (client_id,)) or 0
-    total = float(client["total_amount"] or 0)
+    # Prefer client_apartments sum when available
+    try:
+        total_from_links = fetchval(conn, "SELECT COALESCE(SUM(unit_price), 0) FROM client_apartments WHERE client_id = %s AND status != 'cancelled'", (client_id,))
+    except Exception:
+        total_from_links = None
+    total = float(total_from_links) if total_from_links is not None else float(client.get("total_amount") or 0)
     remaining = max(0, total - float(paid))
+    payment_progress = (float(paid) / total * 100) if total > 0 else 0
     overdue_count = fetchval(conn,
         "SELECT COUNT(*) FROM installments WHERE client_id = %s AND status = 'overdue' AND remaining_amount > 0",
         (client_id,)) or 0
@@ -476,21 +492,42 @@ def recalc_client(conn, client_id):
 
 def sync_apartment_for_client(conn, client_id):
     client = fetchone(conn, "SELECT * FROM clients WHERE id = %s", (client_id,))
-    if not client or not client.get("apartment_id"):
+    if not client:
         return
-    apartment_status = "available"
-    assigned_client_id = None
-    if client["reservation_status"] != "cancelled":
-        assigned_client_id = client["id"]
-        if client["reservation_status"] == "sold" or client["payment_status"] == "fully_paid":
-            apartment_status = "sold"
-        elif client["payment_status"] in ("pending", "overdue"):
-            apartment_status = "pending_payment"
-        else:
-            apartment_status = "reserved"
-    execute(conn,
-        "UPDATE apartments SET status = %s, assigned_client_id = %s, updated_at = %s WHERE id = %s",
-        (apartment_status, assigned_client_id, now_iso(), client["apartment_id"]))
+    try:
+        rows = fetchall(conn, "SELECT * FROM client_apartments WHERE client_id = %s AND status != 'cancelled'", (client_id,))
+    except Exception:
+        # legacy single-apartment behavior
+        if not client.get("apartment_id"):
+            return
+        apartment_status = "available"
+        assigned_client_id = None
+        if client["reservation_status"] != "cancelled":
+            assigned_client_id = client["id"]
+            paid_amount = float(client.get("paid_amount") or 0)
+            if paid_amount >= SOLD_PAYMENT_THRESHOLD or client["payment_status"] == "fully_paid":
+                apartment_status = "sold"
+            elif client["payment_status"] in ("pending", "overdue"):
+                apartment_status = "pending_payment"
+            else:
+                apartment_status = "reserved"
+        execute(conn, "UPDATE apartments SET status = %s, assigned_client_id = %s, updated_at = %s WHERE id = %s", (apartment_status, assigned_client_id, now_iso(), client["apartment_id"]))
+        return
+    for row in rows:
+        apartment_status = "available"
+        assigned_client_id = None
+        if client["reservation_status"] != "cancelled":
+            assigned_client_id = client["id"]
+            paid_amount = float(client.get("paid_amount") or 0)
+            if paid_amount >= SOLD_PAYMENT_THRESHOLD or client["payment_status"] == "fully_paid":
+                apartment_status = "sold"
+            elif client["payment_status"] in ("pending", "overdue"):
+                apartment_status = "pending_payment"
+            else:
+                apartment_status = "reserved"
+        execute(conn, "UPDATE apartments SET status = %s, assigned_client_id = %s, updated_at = %s WHERE id = %s", (apartment_status, assigned_client_id, now_iso(), row["apartment_id"]))
+    # release apartments previously assigned to this client but no longer linked
+    execute(conn, "UPDATE apartments SET status = %s, assigned_client_id = NULL, updated_at = %s WHERE assigned_client_id = %s AND id NOT IN (SELECT apartment_id FROM client_apartments WHERE client_id = %s AND status != 'cancelled')", ("available", now_iso(), client_id, client_id))
 
 
 def active_client_for_apartment(conn, apartment_id, exclude_client_id=None):
@@ -516,9 +553,32 @@ def validate_assignment(conn, apartment_id, client_id=None):
 
 
 def client_payload(conn, client, include_private=True):
-    apartment = fetchone(conn, "SELECT * FROM apartments WHERE id = %s", (client.get("apartment_id"),)) if client.get("apartment_id") else None
-    payments = fetchall(conn, "SELECT * FROM payments WHERE client_id = %s ORDER BY payment_date DESC, created_at DESC", (client["id"],))
-    installments = fetchall(conn, "SELECT * FROM installments WHERE client_id = %s ORDER BY installment_number ASC", (client["id"],))
+    # Try to load linked apartments; fall back to legacy single-apartment field
+    apartments_rows = []
+    try:
+        apartments_rows = fetchall(conn, "SELECT ca.id AS client_apartment_id, ca.apartment_id, ca.unit_price, ca.status AS ca_status, ca.assigned_at, a.unit_code, a.price AS apt_price, a.status AS apt_status, a.notes AS apt_notes FROM client_apartments ca LEFT JOIN apartments a ON a.id = ca.apartment_id WHERE ca.client_id = ? ORDER BY ca.assigned_at DESC", (client["id"],))
+    except Exception:
+        apt = fetchone(conn, "SELECT * FROM apartments WHERE id = %s", (client.get("apartment_id"),)) if client.get("apartment_id") else None
+        apartments_rows = []
+        if apt:
+            apartments_rows = [{"apartment_id": apt["id"], "unit_code": apt["unit_code"], "unit_price": apt["price"], "ca_status": apt["status"], "assigned_at": None}]
+
+    apartments = []
+    for r in apartments_rows:
+        apartments.append({
+            "id": r.get("apartment_id"),
+            "unitCode": r.get("unit_code"),
+            "price": float(r.get("unit_price") or r.get("apt_price") or 0),
+            "status": status_title(r.get("ca_status") or r.get("apt_status")),
+            "assignedAt": r.get("assigned_at"),
+        })
+
+    payments = fetchall(conn, "SELECT payments.*, a.unit_code FROM payments LEFT JOIN apartments a ON a.id = payments.apartment_id WHERE payments.client_id = %s ORDER BY payments.payment_date DESC, payments.created_at DESC", (client["id"],))
+    installments = fetchall(conn, "SELECT installments.*, a.unit_code FROM installments LEFT JOIN apartments a ON a.id = installments.apartment_id WHERE installments.client_id = %s ORDER BY installment_number ASC", (client["id"],))
+
+    total = float(client.get("total_amount") or 0)
+    paid = float(client.get("paid_amount") or 0)
+    payment_progress = (paid / total * 100) if total > 0 else 0
     return {
         "id": client["id"], "code": client["client_code"], "name": client["full_name"],
         "phone": client.get("phone"), "email": client.get("email"),
@@ -530,8 +590,10 @@ def client_payload(conn, client, include_private=True):
         "totalAmount": client["total_amount"], "paidAmount": client["paid_amount"],
         "remainingAmount": client["remaining_amount"],
         "paymentStatus": status_title(client["payment_status"]),
+        "paymentProgress": payment_progress,
         "officeNotes": client.get("office_notes"),
-        "apartment": apartment_payload(apartment) if apartment else None,
+        "apartment": apartments[0] if apartments else None,
+        "apartments": apartments,
         "payments": [payment_payload(r) for r in payments],
         "installments": [installment_payload(r) for r in installments],
     }

@@ -395,6 +395,7 @@ def status_db(value: str | None, kind: str) -> str:
             "confirmed": "confirmed",
             "pending": "pending",
             "rejected": "rejected",
+            "cancelled": "cancelled",
         },
         "method": {
             "cash": "cash",
@@ -605,6 +606,7 @@ def init_db() -> None:
         ensure_admin_role_schema(conn)
         ensure_apartment_status_schema(conn)
         ensure_clients_portfolio_schema(conn)
+        ensure_client_apartments_schema(conn)
         ensure_deals_owner_schema(conn)
         ensure_contracts_schema(conn)
         ensure_runtime_indexes(conn)
@@ -695,6 +697,40 @@ def ensure_deals_owner_schema(conn) -> None:
 def ensure_contracts_schema(conn) -> None:
     conn.execute("ALTER TABLE contracts ADD COLUMN IF NOT EXISTS contract_number TEXT")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_contract_number ON contracts(contract_number) WHERE contract_number IS NOT NULL")
+
+
+def ensure_client_apartments_schema(conn) -> None:
+    # New linking table for clients -> apartments (simple, migration-friendly)
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS client_apartments (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      apartment_id TEXT NOT NULL REFERENCES apartments(id),
+      unit_price REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active',
+      assigned_at TEXT NOT NULL,
+      created_by TEXT REFERENCES admins(id),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    """)
+    try:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_client_apartments_apartment_id ON client_apartments(apartment_id) WHERE status != 'cancelled'")
+    except Exception:
+        pass
+    # Migrate legacy single apartment links from clients.apartment_id
+    rows = conn.execute("SELECT id, apartment_id, total_amount FROM clients WHERE apartment_id IS NOT NULL").fetchall()
+    for row in rows:
+        exists = conn.execute("SELECT id FROM client_apartments WHERE client_id = ? AND apartment_id = ?", (row["id"], row["apartment_id"])).fetchone()
+        if exists:
+            continue
+        price = float(row.get("total_amount") or 0)
+        conn.execute(
+            "INSERT INTO client_apartments (id, client_id, apartment_id, unit_price, status, assigned_at, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, NULL, ?, ?)",
+            (public_id("cap"), row["id"], row["apartment_id"], price, now_iso(), now_iso(), now_iso()),
+        )
+    # Release any apartments that are not referenced in client_apartments
+    conn.execute("UPDATE apartments SET assigned_client_id = NULL WHERE assigned_client_id IS NOT NULL AND assigned_client_id NOT IN (SELECT client_id FROM client_apartments WHERE status != 'cancelled')")
 
 
 def ensure_runtime_indexes(conn) -> None:
@@ -953,18 +989,28 @@ def recalc_client(conn: Any, client_id: str) -> None:
     paid = conn.execute(
         "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE client_id = ? AND payment_status = 'confirmed'",
         (client_id,),
-    ).fetchone()[0]
-    total = float(client["total_amount"] or 0)
+    ).fetchone()[0] or 0
+    # Prefer summing linked apartments when available
+    total_from_links = None
+    try:
+        total_from_links = conn.execute(
+            "SELECT COALESCE(SUM(unit_price), 0) FROM client_apartments WHERE client_id = ? AND status != 'cancelled'",
+            (client_id,),
+        ).fetchone()[0]
+    except Exception:
+        total_from_links = None
+    total = float(total_from_links) if total_from_links is not None else float(client.get("total_amount") or 0)
+
     remaining = max(0, total - float(paid))
     overdue_count = conn.execute(
         "SELECT COUNT(*) FROM installments WHERE client_id = ? AND status = 'overdue' AND remaining_amount > 0",
         (client_id,),
-    ).fetchone()[0]
+    ).fetchone()[0] or 0
     if overdue_count:
         payment_status = "overdue"
-    elif paid <= 0:
+    elif float(paid) <= 0:
         payment_status = "pending"
-    elif paid >= total and total > 0:
+    elif float(paid) >= total and total > 0:
         payment_status = "fully_paid"
     else:
         payment_status = "partially_paid"
@@ -995,20 +1041,53 @@ def recalc_client(conn: Any, client_id: str) -> None:
 
 def sync_apartment_for_client(conn: Any, client_id: str) -> None:
     client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
-    if not client or not client["apartment_id"]:
+    if not client:
         return
-    apartment_status = "available"
-    assigned_client_id = None
-    if client["reservation_status"] != "cancelled":
-        assigned_client_id = client["id"]
-        paid_amount = float(client["paid_amount"] or 0)
-        if paid_amount >= SOLD_PAYMENT_THRESHOLD or client["payment_status"] == "fully_paid":
-            apartment_status = "sold"
-        else:
-            apartment_status = "reserved"
+    # If client_apartments table exists, update each linked apartment; otherwise fall back to legacy single-apartment logic.
+    try:
+        rows = conn.execute("SELECT * FROM client_apartments WHERE client_id = ? AND status != 'cancelled'", (client_id,)).fetchall()
+    except Exception:
+        # legacy behavior
+        if not client.get("apartment_id"):
+            return
+        apartment_status = "available"
+        assigned_client_id = None
+        if client["reservation_status"] != "cancelled":
+            assigned_client_id = client["id"]
+            paid_amount = float(client["paid_amount"] or 0)
+            if paid_amount >= SOLD_PAYMENT_THRESHOLD or client["payment_status"] == "fully_paid":
+                apartment_status = "sold"
+            elif client["payment_status"] in ("pending", "overdue"):
+                apartment_status = "pending_payment"
+            else:
+                apartment_status = "reserved"
+        conn.execute(
+            "UPDATE apartments SET status = ?, assigned_client_id = ?, updated_at = ? WHERE id = ?",
+            (apartment_status, assigned_client_id, now_iso(), client["apartment_id"]),
+        )
+        return
+    assigned_ids = [r["apartment_id"] for r in rows if r.get("apartment_id")]
+    for ca in rows:
+        apartment_id = ca["apartment_id"]
+        apartment_status = "available"
+        assigned_client_id = None
+        if client["reservation_status"] != "cancelled":
+            assigned_client_id = client["id"]
+            paid_amount = float(client["paid_amount"] or 0)
+            if paid_amount >= SOLD_PAYMENT_THRESHOLD or client["payment_status"] == "fully_paid":
+                apartment_status = "sold"
+            elif client["payment_status"] in ("pending", "overdue"):
+                apartment_status = "pending_payment"
+            else:
+                apartment_status = "reserved"
+        conn.execute(
+            "UPDATE apartments SET status = ?, assigned_client_id = ?, updated_at = ? WHERE id = ?",
+            (apartment_status, assigned_client_id, now_iso(), apartment_id),
+        )
+    # Release any apartments previously assigned to this client but no longer linked
     conn.execute(
-        "UPDATE apartments SET status = ?, assigned_client_id = ?, updated_at = ? WHERE id = ?",
-        (apartment_status, assigned_client_id, now_iso(), client["apartment_id"]),
+        "UPDATE apartments SET status = 'available', assigned_client_id = NULL, updated_at = ? WHERE assigned_client_id = ? AND id NOT IN (SELECT apartment_id FROM client_apartments WHERE client_id = ? AND status != 'cancelled')",
+        (now_iso(), client_id, client_id),
     )
 
 
@@ -1114,9 +1193,33 @@ def validate_assignment(conn: Any, apartment_id: str, client_id: str | None = No
 
 
 def client_payload(conn: Any, client: dict[str, Any], include_private: bool = True) -> dict[str, Any]:
-    apartment = conn.execute("SELECT * FROM apartments WHERE id = ?", (client["apartment_id"],)).fetchone()
-    payments = conn.execute("SELECT * FROM payments WHERE client_id = ? ORDER BY payment_date DESC, created_at DESC", (client["id"],)).fetchall()
-    installments = conn.execute("SELECT * FROM installments WHERE client_id = ? ORDER BY installment_number ASC", (client["id"],)).fetchall()
+    # Load apartments linked to the client (client_apartments) when available
+    apartments_rows = []
+    try:
+        apartments_rows = conn.execute(
+            "SELECT ca.id AS client_apartment_id, ca.apartment_id AS apartment_id, ca.unit_price AS unit_price, ca.status AS ca_status, ca.assigned_at AS assigned_at, a.unit_code, a.floor_number, a.apartment_type, a.area, a.direction_ar, a.direction_en, a.price AS apt_price, a.status AS apt_status, a.notes AS apt_notes FROM client_apartments ca LEFT JOIN apartments a ON a.id = ca.apartment_id WHERE ca.client_id = ? ORDER BY ca.assigned_at DESC",
+            (client["id"],),
+        ).fetchall()
+    except Exception:
+        # fallback to legacy single apartment
+        apt = conn.execute("SELECT * FROM apartments WHERE id = ?", (client.get("apartment_id"),)).fetchone() if client.get("apartment_id") else None
+        apartments_rows = []
+        if apt:
+            apartments_rows = [{"apartment_id": apt["id"], "unit_code": apt["unit_code"], "unit_price": apt["price"], "ca_status": apt["status"], "assigned_at": None}]
+
+    apartments = []
+    for row in apartments_rows:
+        apartments.append({
+            "id": row.get("apartment_id"),
+            "unitCode": row.get("unit_code"),
+            "price": float(row.get("unit_price") or row.get("apt_price") or 0),
+            "status": status_title(row.get("ca_status") or row.get("apt_status")),
+            "assignedAt": row.get("assigned_at"),
+        })
+
+    payments = conn.execute("SELECT payments.*, apartments.unit_code FROM payments LEFT JOIN apartments ON apartments.id = payments.apartment_id WHERE payments.client_id = ? ORDER BY payments.payment_date DESC, payments.created_at DESC", (client["id"],)).fetchall()
+    installments = conn.execute("SELECT installments.*, apartments.unit_code FROM installments LEFT JOIN apartments ON apartments.id = installments.apartment_id WHERE installments.client_id = ? ORDER BY installment_number ASC", (client["id"],)).fetchall()
+
     portfolio_code = client["portfolio_code"] or client["client_code"]
     return {
         "id": client["id"],
@@ -1127,16 +1230,17 @@ def client_payload(conn: Any, client: dict[str, Any], include_private: bool = Tr
         "phone": normalize_display_text(client["phone"]),
         "email": normalize_display_text(client["email"]),
         "nationalId": normalize_display_text(client["national_id"]) if include_private else None,
-        "apartmentId": client["apartment_id"],
+        "apartmentId": client.get("apartment_id"),
         "reservationStatus": status_title(client["reservation_status"]),
         "reservationDate": client["reservation_date"],
-        "expectedDeliveryDate": client["expected_delivery_date"],
+        "expectedDeliveryDate": client.get("expected_delivery_date"),
         "totalAmount": client["total_amount"],
         "paidAmount": client["paid_amount"],
         "remainingAmount": client["remaining_amount"],
         "paymentStatus": status_title(client["payment_status"]),
-        "officeNotes": normalize_display_text(client["office_notes"]),
-        "apartment": apartment_payload(apartment) if apartment else None,
+        "officeNotes": normalize_display_text(client.get("office_notes")),
+        "apartment": apartments[0] if apartments else None,
+        "apartments": apartments,
         "payments": [payment_payload(row) for row in payments],
         "installments": [installment_payload(row) for row in installments],
     }
@@ -2116,28 +2220,8 @@ def list_admin_clients() -> Response:
     with db() as conn:
         total = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
         settings = all_settings(conn)
-        rows = conn.execute(
-            """
-            SELECT clients.*,
-                   apartments.id AS apt_id,
-                   apartments.unit_code AS apt_unit_code,
-                   apartments.floor_number AS apt_floor_number,
-                   apartments.apartment_type AS apt_apartment_type,
-                   apartments.area AS apt_area,
-                   apartments.direction_ar AS apt_direction_ar,
-                   apartments.direction_en AS apt_direction_en,
-                   apartments.price AS apt_price,
-                   apartments.status AS apt_status,
-                   apartments.assigned_client_id AS apt_assigned_client_id,
-                   apartments.notes AS apt_notes
-            FROM clients
-            LEFT JOIN apartments ON apartments.id = clients.apartment_id
-            ORDER BY clients.created_at DESC
-            LIMIT ? OFFSET ?
-            """,
-            (limit, offset),
-        ).fetchall()
-        items = [admin_client_list_payload(row, joined_apartment_row(row), settings.get("office_address", "")) for row in rows]
+        rows = conn.execute("SELECT * FROM clients ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset)).fetchall()
+        items = [client_payload(conn, row, include_private=False) for row in rows]
         return jsonify(paginated_payload("clients", items, total, page, limit))
 
 
@@ -2348,6 +2432,61 @@ def assign_apartment() -> Response:
         return jsonify({"ok": True})
 
 
+@app.get("/api/admin/clients/<client_id>/financial-summary")
+def client_financial_summary(client_id: str) -> Response:
+    admin = require_admin()
+    if not isinstance(admin, dict):
+        return admin
+    with db() as conn:
+        client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not client:
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
+        
+        # Get linked apartments
+        try:
+            apartments = conn.execute(
+                "SELECT ca.*, a.unit_code, a.price AS apartment_price FROM client_apartments ca LEFT JOIN apartments a ON a.id = ca.apartment_id WHERE ca.client_id = ? AND ca.status != 'cancelled'",
+                (client_id,),
+            ).fetchall()
+        except Exception:
+            apartments = []
+        
+        # Calculate totals
+        total_amount = sum(float(apt.get("unit_price") or apt.get("apartment_price") or 0) for apt in apartments) if apartments else float(client.get("total_amount") or 0)
+        paid_amount = conn.execute("SELECT SUM(amount) FROM payments WHERE client_id = ? AND payment_status = 'confirmed'", (client_id,)).fetchone()[0] or 0
+        remaining_amount = total_amount - paid_amount
+        progress = (paid_amount / total_amount * 100) if total_amount > 0 else 0
+        
+        # Determine status
+        if paid_amount == 0:
+            payment_status = "pending"
+        elif paid_amount >= total_amount:
+            payment_status = "fully_paid"
+        else:
+            payment_status = "partially_paid"
+        
+        # Check for overdue
+        overdue_installments = conn.execute(
+            "SELECT COUNT(*) FROM installments WHERE client_id = ? AND status = 'pending' AND due_date < ?",
+            (client_id, now_iso()[:10]),
+        ).fetchone()[0]
+        if overdue_installments > 0:
+            payment_status = "overdue"
+        
+        return jsonify({
+            "financial_summary": {
+                "client_id": client_id,
+                "total_amount": total_amount,
+                "paid_amount": paid_amount,
+                "remaining_amount": remaining_amount,
+                "progress": progress,
+                "payment_status": payment_status,
+                "apartments_count": len(apartments),
+                "apartments": [{"id": apt["apartment_id"], "unit_code": apt.get("unit_code"), "price": float(apt.get("unit_price") or apt.get("apartment_price") or 0)} for apt in apartments],
+            }
+        })
+
+
 @app.patch("/api/admin/apartments/<apartment_id>")
 def update_apartment(apartment_id: str) -> Response:
     admin = require_admin({"owner", "admin"})
@@ -2386,10 +2525,18 @@ def add_payment() -> Response:
     if not (payload.get("payment_method") or payload.get("method")):
         return jsonify({"error": "validation", "message": "طريقة الدفع مطلوبة."}), 400
     client_id = payload.get("client_id") or payload.get("clientId")
+    apartment_id = payload.get("apartment_id") or payload.get("apartmentId") or None
     with db() as conn:
         client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if not client:
             return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
+        # Validate apartment reference if provided
+        if apartment_id:
+            apt = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
+            if not apt:
+                return jsonify({"error": "not_found", "message": "الشقة المرجعية غير موجودة."}), 404
+            if apt.get("assigned_client_id") and apt.get("assigned_client_id") != client_id:
+                return jsonify({"error": "assignment", "message": "هذه الشقة مرتبطة بعميل آخر."}), 409
         if amount > float(client["remaining_amount"] or client["total_amount"]) and not payload.get("allow_overpay"):
             return jsonify({"error": "overpay", "message": "المبلغ المدخل أكبر من المبلغ المتبقي."}), 409
         payment_status = status_db(payload.get("payment_status") or payload.get("status") or "confirmed", "payment_record")
@@ -2407,7 +2554,7 @@ def add_payment() -> Response:
             (
                 payment_id,
                 client_id,
-                client["apartment_id"],
+                apartment_id,
                 amount,
                 payment_date,
                 status_db(payload.get("payment_method") or payload.get("method") or "cash", "method"),
@@ -2423,9 +2570,9 @@ def add_payment() -> Response:
         recalc_client(conn, client_id)
         if payment_status == "confirmed" and receipt:
             create_receipt_record(conn, payment_id, admin["id"])
-        audit(conn, admin["id"], "create", "payment", payment_id, f"تم إضافة دفعة بقيمة {format_money(amount)}", None, payload)
-        row = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
-        return jsonify({"payment": payment_payload(row)})
+        new_row = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
+        audit(conn, admin["id"], "create", "payment", payment_id, f"تم إضافة دفعة بقيمة {format_money(amount)}", None, dict(new_row))
+        return jsonify({"payment": payment_payload(new_row)})
 
 
 @app.get("/api/admin/payments")
@@ -2459,13 +2606,13 @@ def update_payment(payment_id: str) -> Response:
         return admin
     payload = request.get_json(silent=True) or {}
     with db() as conn:
-        old = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
+        old = conn.execute("SELECT * FROM payments WHERE id = %s", (payment_id,)).fetchone()
         if not old:
             return jsonify({"error": "not_found", "message": "الدفعة غير موجودة."}), 404
         amount = float(payload.get("amount", old["amount"]))
         if amount <= 0:
             return jsonify({"error": "validation", "message": "قيمة الدفعة يجب أن تكون أكبر من صفر."}), 400
-        client = conn.execute("SELECT * FROM clients WHERE id = ?", (old["client_id"],)).fetchone()
+        client = conn.execute("SELECT * FROM clients WHERE id = %s", (old["client_id"],)).fetchone()
         old_confirmed = float(old["amount"] or 0) if old["payment_status"] == "confirmed" else 0
         remaining_for_edit = float(client["remaining_amount"] or 0) + old_confirmed if client else amount
         if amount > remaining_for_edit and not payload.get("allow_overpay"):
@@ -2473,14 +2620,15 @@ def update_payment(payment_id: str) -> Response:
         payment_status = status_db(payload.get("payment_status") or payload.get("status") or old["payment_status"], "payment_record")
         receipt = payload.get("receipt_number") or old["receipt_number"] or (receipt_number(conn) if payment_status == "confirmed" else None)
         if receipt:
-            duplicate = conn.execute("SELECT id FROM payments WHERE receipt_number = ? AND id != ?", (receipt, payment_id)).fetchone()
+            duplicate = conn.execute("SELECT id FROM payments WHERE receipt_number = %s AND id != %s", (receipt, payment_id)).fetchone()
             if duplicate:
                 return jsonify({"error": "duplicate_receipt", "message": "رقم الإيصال مستخدم بالفعل."}), 409
+        apartment_id = payload.get("apartment_id") or payload.get("apartmentId") or old.get("apartment_id")
         conn.execute(
             """
-            UPDATE payments SET amount = ?, payment_date = ?, payment_method = ?, payment_status = ?,
-              receipt_number = ?, reference_number = ?, notes = ?, updated_at = ?
-            WHERE id = ?
+            UPDATE payments SET amount = %s, payment_date = %s, payment_method = %s, payment_status = %s,
+              receipt_number = %s, reference_number = %s, notes = %s, apartment_id = %s, updated_at = %s
+            WHERE id = %s
             """,
             (
                 amount,
@@ -2490,16 +2638,20 @@ def update_payment(payment_id: str) -> Response:
                 receipt,
                 payload.get("reference_number") or payload.get("reference") or old["reference_number"],
                 payload.get("notes", old["notes"]),
+                apartment_id,
                 now_iso(),
                 payment_id,
             ),
         )
         recalc_client(conn, old["client_id"])
-        if payment_status == "confirmed" and receipt:
+        # Manage receipts
+        new_row = conn.execute("SELECT * FROM payments WHERE id = %s", (payment_id,)).fetchone()
+        if new_row["payment_status"] == "confirmed" and new_row.get("receipt_number"):
             create_receipt_record(conn, payment_id, admin["id"])
-        audit(conn, admin["id"], "update", "payment", payment_id, "تم تعديل دفعة", dict(old), payload)
-        row = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
-        return jsonify({"payment": payment_payload(row)})
+        else:
+            conn.execute("DELETE FROM receipts WHERE payment_id = %s", (payment_id,))
+        audit(conn, admin["id"], "update", "payment", payment_id, "تم تعديل دفعة", dict(old), dict(new_row))
+        return jsonify({"payment": payment_payload(new_row)})
 
 
 @app.delete("/api/admin/payments/<payment_id>")
@@ -2509,14 +2661,136 @@ def delete_payment(payment_id: str) -> Response:
         return admin
     if request.args.get("confirm") != "true":
         return jsonify({"error": "confirmation_required", "message": "لا يمكن حذف هذه الدفعة بدون تأكيد."}), 409
+    reason = request.args.get("reason") or None
     with db() as conn:
         old = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
         if not old:
             return jsonify({"error": "not_found", "message": "الدفعة غير موجودة."}), 404
+        # Protect confirmed payments: prefer cancelling over hard delete
+        if old["payment_status"] == "confirmed":
+            if admin["role"] != "owner":
+                return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية حذف دفعة مؤكدة."}), 403
+            if not reason:
+                return jsonify({"error": "reason_required", "message": "سبب الحذف مطلوب."}), 400
+            conn.execute("UPDATE payments SET payment_status = ?, notes = ?, updated_at = ? WHERE id = ?", ("cancelled", (old.get("notes") or "") + "\nCancelled: " + reason, now_iso(), payment_id))
+            conn.execute("DELETE FROM receipts WHERE payment_id = ?", (payment_id,))
+            recalc_client(conn, old["client_id"])
+            new_row = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
+            audit(conn, admin["id"], "cancel", "payment", payment_id, f"تم إلغاء دفعة: {reason}", dict(old), dict(new_row))
+            return jsonify({"ok": True})
+        # Non-confirmed payments can be deleted
         conn.execute("DELETE FROM payments WHERE id = ?", (payment_id,))
+        conn.execute("DELETE FROM receipts WHERE payment_id = ?", (payment_id,))
         recalc_client(conn, old["client_id"])
         audit(conn, admin["id"], "delete", "payment", payment_id, "تم حذف دفعة", dict(old), None)
         return jsonify({"ok": True})
+
+
+@app.post("/api/admin/payments/<payment_id>/cancel")
+def cancel_payment(payment_id: str) -> Response:
+    admin = require_admin({"owner", "admin", "accountant"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"error": "validation", "message": "سبب الإلغاء مطلوب."}), 400
+    with db() as conn:
+        old = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
+        if not old:
+            return jsonify({"error": "not_found", "message": "الدفعة غير موجودة."}), 404
+        if old["payment_status"] == "cancelled":
+            return jsonify({"payment": payment_payload(old)})
+        if admin["role"] != "owner" and old["payment_status"] == "confirmed":
+            return jsonify({"error": "forbidden", "message": "ليس لديك صلاحية لإلغاء دفعة مؤكدة."}), 403
+        # Mark as cancelled instead of hard delete
+        conn.execute(
+            "UPDATE payments SET payment_status = ?, notes = ?, updated_at = ? WHERE id = ?",
+            ("cancelled", (old.get("notes") or "") + f"\nCancelled: {reason}", now_iso(), payment_id),
+        )
+        conn.execute("DELETE FROM receipts WHERE payment_id = ?", (payment_id,))
+        recalc_client(conn, old["client_id"])
+        new_row = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
+        audit(conn, admin["id"], "cancel", "payment", payment_id, f"تم إلغاء دفعة: {reason}", dict(old), dict(new_row))
+        return jsonify({"payment": payment_payload(new_row)})
+
+
+@app.post("/api/admin/clients/<client_id>/apartments")
+def add_apartment_to_client(client_id: str) -> Response:
+    admin = require_admin({"owner", "admin", "accountant"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    apartment_id = payload.get("apartment_id") or payload.get("apartmentId")
+    if not apartment_id:
+        return jsonify({"error": "validation", "message": "معرف الشقة مطلوب."}), 400
+    with db() as conn:
+        client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not client:
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
+        apartment = conn.execute("SELECT * FROM apartments WHERE id = ?", (apartment_id,)).fetchone()
+        if not apartment:
+            return jsonify({"error": "not_found", "message": "الشقة غيرموجودة."}), 404
+        # Check if apartment is already linked to another active client
+        existing_link = conn.execute(
+            "SELECT client_id FROM client_apartments WHERE apartment_id = ? AND status != 'cancelled'",
+            (apartment_id,),
+        ).fetchone()
+        if existing_link and existing_link["client_id"] != client_id:
+            return jsonify({"error": "validation", "message": "هذه الشقة مرتبطة بعميل آخر."}), 409
+        # Add the link
+        ensure_client_apartments_schema(conn)
+        link_id = public_id("cap")
+        unit_price = float(payload.get("unit_price") or payload.get("unitPrice") or apartment["price"] or 0)
+        conn.execute(
+            """
+            INSERT INTO client_apartments (id, client_id, apartment_id, unit_price, status, assigned_at, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+            """,
+            (link_id, client_id, apartment_id, unit_price, now_iso(), admin["id"], now_iso(), now_iso()),
+        )
+        recalc_client(conn, client_id)
+        audit(conn, admin["id"], "link_apartment", "client", client_id, f"تمت إضافة شقة {apartment['unit_code']} للعميل", None, {"apartment_id": apartment_id, "unit_price": unit_price})
+        row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        return jsonify({"client": client_payload(conn, row)})
+
+
+@app.delete("/api/admin/clients/<client_id>/apartments/<apartment_id>")
+def remove_apartment_from_client(client_id: str, apartment_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or "").strip()
+    with db() as conn:
+        client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not client:
+            return jsonify({"error": "not_found", "message": "العميل غير موجود."}), 404
+        # Mark the link as cancelled instead of deleting
+        conn.execute(
+            "UPDATE client_apartments SET status = 'cancelled', updated_at = ? WHERE client_id = ? AND apartment_id = ?",
+            (now_iso(), client_id, apartment_id),
+        )
+        # Check if any other client has this apartment linked
+        other_client = conn.execute(
+            "SELECT client_id FROM client_apartments WHERE apartment_id = ? AND client_id != ? AND status != 'cancelled'",
+            (apartment_id, client_id),
+        ).fetchone()
+        if not other_client:
+            # Release apartment if no other confirmed payments
+            has_confirmed_payments = conn.execute(
+                "SELECT id FROM payments WHERE apartment_id = ? AND payment_status = 'confirmed'",
+                (apartment_id,),
+            ).fetchone()
+            if not has_confirmed_payments:
+                conn.execute(
+                    "UPDATE apartments SET status = 'available', assigned_client_id = NULL, updated_at = ? WHERE id = ?",
+                    (now_iso(), apartment_id),
+                )
+        recalc_client(conn, client_id)
+        audit(conn, admin["id"], "unlink_apartment", "client", client_id, f"تمت إزالة شقة من العميل (السبب: {reason})" if reason else "تمت إزالة شقة من العميل", {"apartment_id": apartment_id}, None)
+        row = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        return jsonify({"client": client_payload(conn, row)})
 
 
 def create_receipt_record(conn: Any, payment_id: str, admin_id: str | None) -> None:
@@ -3159,7 +3433,7 @@ def cancel_deal(deal_id: str) -> Response:
     if not reason:
         return jsonify({"error": "validation", "message": "سبب الإلغاء مطلوب."}), 400
     with db() as conn:
-        old = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        old = conn.execute("SELECT * FROM deals WHERE id = %s", (deal_id,)).fetchone()
         if not old:
             return jsonify({"error": "not_found", "message": "الديل غير موجود."}), 404
         if old["status"] == "cancelled":
@@ -3170,18 +3444,18 @@ def cancel_deal(deal_id: str) -> Response:
             return jsonify({"error": "validation", "message": "لا يمكن إلغاء هذا الديل."}), 409
 
         conn.execute(
-            "UPDATE deals SET status = 'cancelled', owner_notes = ?, updated_at = ? WHERE id = ?",
+            "UPDATE deals SET status = 'cancelled', owner_notes = %s, updated_at = %s WHERE id = %s",
             (reason, now_iso(), deal_id),
         )
         if old["client_id"]:
             conn.execute(
-                "UPDATE clients SET reservation_status = 'cancelled', office_notes = ?, updated_at = ? WHERE id = ?",
+                "UPDATE clients SET reservation_status = 'cancelled', office_notes = %s, updated_at = %s WHERE id = %s",
                 (f"تم إلغاء الديل. السبب: {reason}", now_iso(), old["client_id"]),
             )
             recalc_client(conn, old["client_id"])
         release_apartment_for_deal(conn, old, admin["id"])
         audit(conn, admin["id"], "cancel_deal", "deal", deal_id, "تم إلغاء ديل", dict(old), {"status": "cancelled", "reason": reason})
-        row = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        row = conn.execute("SELECT * FROM deals WHERE id = %s", (deal_id,)).fetchone()
         return jsonify({"deal": deal_payload(conn, row)})
 
 
@@ -3200,7 +3474,7 @@ def delete_draft_deal_impl(deal_id: str) -> Response:
     if not isinstance(admin, dict):
         return admin
     with db() as conn:
-        old = conn.execute("SELECT * FROM deals WHERE id = ?", (deal_id,)).fetchone()
+        old = conn.execute("SELECT * FROM deals WHERE id = %s", (deal_id,)).fetchone()
         if not old:
             return jsonify({"error": "not_found", "message": "الديل غير موجود."}), 404
         if admin["role"] == "assistant" and old["assistant_id"] != admin["id"]:
@@ -3210,7 +3484,7 @@ def delete_draft_deal_impl(deal_id: str) -> Response:
         if deal_has_payments(conn, old):
             return jsonify({"error": "validation", "message": "لا يمكن حذف ديل مرتبط بمدفوعات. يمكن إلغاء الديل فقط مع الاحتفاظ بالسجل."}), 409
         audit(conn, admin["id"], "delete_draft_deal", "deal", deal_id, "تم حذف مسودة ديل", dict(old), None)
-        conn.execute("DELETE FROM deals WHERE id = ?", (deal_id,))
+        conn.execute("DELETE FROM deals WHERE id = %s", (deal_id,))
         release_apartment_for_deal(conn, old, admin["id"])
         return jsonify({"ok": True})
 

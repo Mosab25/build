@@ -144,7 +144,7 @@ function renderAdminInstallmentsTable(installments) {
                 <td data-label="ملاحظات">${escapeHTML(item.notes || "-")}</td>
                 <td data-label="إجراءات" class="table-actions">
                   <button class="btn ghost small" data-installment-edit="${item.id}" type="button">تعديل</button>
-                  <button class="btn danger small" data-installment-delete="${item.id}" type="button">حذف</button>
+                  <button class="btn danger small" data-installment-delete="${item.id}" type="button">حذف القسط</button>
                 </td>
               </tr>
             `;
@@ -187,6 +187,11 @@ function openPaymentForm(clientId = "", payment = null) {
           ${clients.map((client) => `<option value="${client.id}" ${client.id === selectedClientId ? "selected" : ""}>${escapeHTML(paymentClientOptionLabel(client))}</option>`).join("")}
         </select>
       </div>
+      <div class="form-field"><label for="paymentApartment">الشقة (اختياري)</label>
+        <select id="paymentApartment">
+          <option value="">بدون شقة</option>
+        </select>
+      </div>
       <div class="form-field"><label for="paymentAmount">المبلغ</label><input id="paymentAmount" type="text" inputmode="numeric" autocomplete="off" required placeholder="1,000,000" /></div>
       <div class="form-field"><label for="paymentDate">تاريخ الدفع</label><input id="paymentDate" type="date" required /></div>
       <div class="form-field"><label for="paymentMethod">طريقة الدفع</label><select id="paymentMethod"><option value="cash">نقدًا</option><option value="bank_transfer">تحويل بنكي</option><option value="installment">قسط</option><option value="office_payment">دفع في المكتب</option><option value="other">أخرى</option></select></div>
@@ -204,6 +209,24 @@ function openPaymentForm(clientId = "", payment = null) {
   qs("#paymentReceiptNumber").value = payment?.receiptNumber || "";
   qs("#paymentReferenceNumber").value = payment?.referenceNumber || "";
   qs("#paymentNotes").value = payment?.notes || "";
+
+  function populateApartmentsForClient(clientId) {
+    const select = qs("#paymentApartment");
+    if (!select) return;
+    select.innerHTML = '<option value="">بدون شقة</option>';
+    const client = (APP_STATE.dashboard.clients || []).find((c) => c.id === clientId);
+    const list = client?.apartments || (client?.apartment ? [client.apartment] : []);
+    list.forEach((a) => {
+      const value = a.id || a.apartmentId || a.client_apartment_id || "";
+      const label = `${escapeHTML(a.unitCode || a.unit_code || "-" )} - ${formatMoney(a.price || a.unitPrice || a.unit_price || 0)}`;
+      const opt = `<option value="${value}" ${payment && (payment.apartmentId === value || payment.apartmentId === value) ? 'selected' : ''}>${label}</option>`;
+      select.insertAdjacentHTML('beforeend', opt);
+    });
+  }
+
+  populateApartmentsForClient(selectedClientId);
+  qs("#paymentClient").addEventListener("change", (e) => populateApartmentsForClient(e.target.value));
+
   qs("#paymentAmount").addEventListener("input", (event) => {
     event.target.value = formatAmountInput(event.target.value);
   });
@@ -222,6 +245,7 @@ async function savePayment(event) {
   const amount = parseFormattedAmount(qs("#paymentAmount").value);
   const payload = {
     client_id: qs("#paymentClient").value,
+    apartment_id: qs("#paymentApartment")?.value || undefined,
     amount,
     payment_date: qs("#paymentDate").value,
     payment_method: qs("#paymentMethod").value,
