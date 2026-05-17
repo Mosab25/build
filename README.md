@@ -1,239 +1,131 @@
-# منصة إدارة حجوزات أرض عبدالجليل
+# Real Estate Reservation Platform
 
-نظام عقاري عربي RTL لإدارة الوحدات، العملاء، الدفعات، الأقساط، الديلات، العقود، الإيصالات، التحديثات المنشورة، وسجل نشاط الإدارة.
+A Flask and PostgreSQL application for managing a real estate reservation workflow. It includes public project pages, admin and owner dashboards, assistant deal workflows, clients, apartments, payments, contracts, receipts, reports, audit logs, media assets, and upload handling.
 
-## حالة قاعدة البيانات الحالية
+## Requirements
 
-النسخة الحالية تعمل الآن على **PostgreSQL فقط** عبر المتغير:
+- Python 3.11+
+- PostgreSQL 14+
+- Docker Desktop, optional for local PostgreSQL
 
-```text
-DATABASE_URL
+## Installation
+
+1. Create and activate a virtual environment.
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 ```
 
-تم إيقاف الاعتماد على SQLite داخل `server.py`. ملف `reservation_system.sqlite3` تم نقله إلى الأرشيف كنسخة قديمة فقط، ولا يتم استخدامه في التشغيل الحالي.
-
-> مهم: لن يعمل السيرفر إذا لم يتم ضبط `DATABASE_URL` في ملف `.env` أو في متغيرات بيئة النظام.
-
-## التشغيل المحلي مع PostgreSQL
-
-1. ثبّت الاعتمادات:
+2. Install dependencies.
 
 ```powershell
 python -m pip install -r requirements.txt
 ```
 
-2. أنشئ قاعدة PostgreSQL محلية، مثال:
+3. Create a local environment file.
 
-```sql
-CREATE DATABASE real_estate;
+```powershell
+Copy-Item .env.example .env
 ```
 
-أو شغّل PostgreSQL عبر Docker بعد فتح Docker Desktop:
+4. Edit `.env` with real local values. Do not commit `.env`.
+
+## Environment Variables
+
+- `DATABASE_URL`: PostgreSQL connection string. Required.
+- `SECRET_KEY`: Flask session secret. Required in production.
+- `APP_ENV`: `development` or `production`.
+- `UPLOAD_FOLDER`: Runtime upload directory. Defaults to `uploads`.
+- `BOOTSTRAP_OWNER`: Set to `true` only when bootstrapping an owner from environment variables.
+- `OWNER_EMAIL`: Owner email used when `BOOTSTRAP_OWNER=true`.
+- `OWNER_PASSWORD`: Owner password used when `BOOTSTRAP_OWNER=true`.
+- `OWNER_NAME`: Optional owner display name used when bootstrapping.
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`: Optional production media storage for project update uploads. When omitted, uploads are stored locally for development.
+
+## Run Locally
+
+Start PostgreSQL with Docker:
 
 ```powershell
 docker compose up -d postgres
 ```
 
-3. أنشئ ملف `.env` في جذر المشروع وضع فيه:
-
-```text
-DATABASE_URL=postgresql://postgres:postgres@localhost:5433/real_estate
-```
-
-4. شغّل السيرفر. سيقوم `server.py` بإنشاء الجداول وبذر 21 شقة وحساب المالك تلقائيًا عند التشغيل الأول:
+Run the app:
 
 ```powershell
-python server.py
+python -m app.main
 ```
 
-يمكن تشغيل تهيئة PostgreSQL والبذر بشكل مستقل عند الحاجة:
-
-```powershell
-python schema.py
-python scripts/seed_postgresql.py
-```
-
-ثم افتح:
+Open:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-## Render + Neon (First Run)
+The app initializes required tables and default seed data during startup.
 
-1. ارفع ملفات الوسائط الأساسية داخل `media/` إلى GitHub، وهي:
-   - `media/facade.jpg`
-   - `media/apartment-1.jpg`
-   - `media/apartment-2.jpg`
-   - `media/apartment-3.jpg`
-   - `media/project-video.mp4`
-2. اترك `uploads/` و`generated/` خارج GitHub لأنها ملفات تشغيلية تنشأ أثناء العمل فقط.
-3. في Render اضبط متغيرات البيئة:
-
-```text
-APP_ENV=production
-SECRET_KEY=<strong-random-secret>
-DATABASE_URL=<your-neon-connection-string>
-```
-
-4. استخدم Build Command:
-
-```text
-python -m pip install -r requirements.txt
-```
-
-5. استخدم Start Command الآمن التالي:
-
-```text
-python scripts/prepare_production.py && gunicorn -c gunicorn.conf.py server:app
-```
-
-6. في أول تشغيل سيتم:
-   - إنشاء كل الجداول تلقائيًا
-   - إنشاء حساب المالك الافتراضي إذا لم يكن موجودًا
-   - إنشاء 21 شقة إذا كانت القاعدة فارغة
-   - إنشاء الإعدادات الافتراضية
-
-7. بيانات الدخول الافتراضية لأول تشغيل:
-   - البريد الإلكتروني: `admin@example.com`
-   - كلمة المرور: `Admin@12345`
-
-> غيّر بيانات الدخول الافتراضية مباشرة بعد أول تسجيل دخول على بيئة الإنتاج.
-
-## Render - إعداد خطة مجانية باستخدام متغيرات البيئة
-
-إذا كنت تستخدم خطة Render مجانية بدون Shell access، استخدم bootstrap environment variables لإنشاء حساب المالك تلقائيًا:
-
-### الخطوات:
-
-1. في Render أضف متغيرات البيئة التالية بالإضافة إلى المتغيرات أعلاه:
-
-```text
-BOOTSTRAP_OWNER=true
-OWNER_EMAIL=mosabhassan025@gmail.com
-OWNER_PASSWORD=<strong-password-from-render-env>
-OWNER_NAME=مصعب حسن
-```
-
-2. استخدم **Start Command** المرة واحدة فقط:
-
-```text
-python scripts/prepare_production.py && gunicorn -c gunicorn.conf.py server:app
-```
-
-3. عند التشغيل الأول:
-   - النظام سيقرأ `BOOTSTRAP_OWNER=true`
-   - سيتحقق من `OWNER_EMAIL` و `OWNER_PASSWORD`
-   - سينشئ أو يحدّث حساب المالك برقم `OWNER_EMAIL`
-   - إذا كان الحساب موجودًا، سيحدّث كلمة المرور والبيانات
-   - لن يطبع كلمة المرور أو أي بيانات حساسة في السجلات
-
-### بعد أول تسجيل دخول ناجح:
-
-4. **أزل أو عطّل Bootstrap** بتعديل متغيرات البيئة في Render:
-   - أزل `BOOTSTRAP_OWNER` أو اضبطه إلى `false`
-   - هذا يضمن عدم استبدال حساب المالك في المرات القادمة
-
-5. غيّر كلمة المرور من داخل الواجهة (POST `/api/admin/change-password`)
-
-### ملاحظات أمان:
-
-- ✅ كلمة المرور لا تُطبع في السجلات
-- ✅ يتم تجزئتها بـ PBKDF2-SHA256 مع salt عشوائي
-- ✅ لا توجد نقاط نهاية عامة لـ bootstrap
-- ✅ بيانات الدخول الافتراضية آمنة بعد إزالة `BOOTSTRAP_OWNER`
-- ❌ تأكد من عدم حفظ `OWNER_PASSWORD` أو أي كلمات مرور في كود المشروع
-
-## إعادة ضبط حساب المالك محليًا
-
-لو بيانات الدخول لا تعمل على PostgreSQL أو أردت إعادة ضبط حساب المالك، استخدم:
+## Run With Gunicorn
 
 ```powershell
-python reset_owner_password.py
+gunicorn -c gunicorn.conf.py app.main:app
 ```
 
-بيانات الدخول المحلية بعد إعادة الضبط:
+For hosted deployments, run the production preparation script before Gunicorn:
 
-- البريد الإلكتروني: `admin@example.com`
-- كلمة المرور: `Admin@12345`
-- الدور: `owner`
+```powershell
+python scripts/prepare_production.py
+gunicorn -c gunicorn.conf.py app.main:app
+```
 
-> غيّر بيانات الدخول الافتراضية قبل أي تشغيل فعلي أو نشر عام.
+## Docker
 
-## بنية الواجهة
+This repository currently uses Docker Compose for the PostgreSQL service:
 
-- `index.html`: واجهة تشغيل نظيفة بدون CSS أو JavaScript مدمج.
-- `static/css/`: نظام التصميم وتقسيمات العام، العميل، الإدارة، المساعد، المعرض، وRTL.
-- `static/js/api.js`: طبقة API مركزية لكل طلبات النظام.
-- `static/js/`: وحدات الواجهة حسب المجال مثل العميل، الإدارة، المساعد، الديلات، العقود، الإعدادات، وسجل النشاط.
-- `legacy-frontend/unstable-2026-05-13/`: نسخة الواجهة السابقة محفوظة للرجوع فقط.
+```powershell
+docker compose up -d postgres
+docker compose config
+```
 
-## الأدوار
+## Useful Scripts
 
-- `owner`: الموافقات، العقود النهائية، الإعدادات، سجل النشاط، التقارير، الإدارة الكاملة.
-- `admin`: تشغيل العملاء، الشقق، المدفوعات، العقود، التحديثات، والتقارير حسب الصلاحيات.
-- `assistant`: إنشاء ديلات، إرسالها للموافقة، إصدار عقد مسودة، وعرض ديلاته فقط.
-- `client`: الدخول بكود الحجز وعرض بياناته فقط.
+- `python scripts/prepare_production.py`: creates runtime directories, initializes the database, and checks required media.
+- `python scripts/seed_postgresql.py`: idempotently seeds default owner/settings/apartments.
+- `python scripts/change_admin_credentials.py`: interactively changes an admin or owner login.
+- `python scripts/reset_owner_password.py`: local development recovery for the default owner account.
 
-## Workflow الشقق والديلات
-
-حالات الشقة الأساسية:
+## Project Structure
 
 ```text
-available → pending_approval → reserved → sold
+project-root/
+├── app/
+│   ├── main.py
+│   ├── config.py
+│   ├── routes/
+│   ├── services/
+│   ├── utils/
+│   ├── templates/
+│   └── static/
+├── scripts/
+├── migrations/
+├── uploads/
+├── media/
+├── memory/
+├── legacy-frontend/
+├── specs/
+├── requirements.txt
+├── docker-compose.yml
+├── gunicorn.conf.py
+├── .env.example
+├── .gitignore
+└── README.md
 ```
 
-حالات إضافية:
+Runtime folders such as `uploads/`, `generated/`, `media/`, and `memory/` are kept out of new commits by `.gitignore`. Keep production media and uploaded files managed through your deployment/storage process.
 
-```text
-pending_payment
-frozen
-```
+## Notes
 
-- عند إرسال المساعد للديل: تتحول الشقة إلى `pending_approval`.
-- عند موافقة المالك: تتحول إلى `reserved`.
-- عند إصدار العقد النهائي/الإنهاء: تتحول إلى `sold`.
-- عند الرفض: تعود إلى `available` إذا لم يوجد عميل أو ديل نشط آخر.
-
-## أهم المسارات
-
-- `POST /api/client/verify-code`
-- `GET /api/public/overview`
-- `GET /api/project-updates/published`
-- `POST /api/admin/login`
-- `GET /api/admin/bootstrap`
-- `POST /api/admin/deals`
-- `POST /api/admin/deals/<id>/submit`
-- `POST /api/admin/deals/<id>/approve`
-- `GET /api/admin/contracts`
-- `POST /api/admin/contracts/generate`
-- `GET /api/admin/export/<kind>`
-- `POST /api/admin/uploads/project-update-media`
-
-## الملفات التي لا يفضل رفعها للإنتاج
-
-أضفها إلى `.gitignore` في بيئة النشر:
-
-```text
-.env
-generated/
-uploads/
-__pycache__/
-*.pyc
-*.sqlite3
-```
-
-> ملاحظة: لا تضف `media/` إلى `.gitignore` لأن الصفحة العامة تعتمد على هذه الملفات مباشرة.
-
-## ملاحظات تشغيلية
-
-- يتم بذر 21 شقة تلقائيًا إذا لم تكن موجودة.
-- يتم استدعاء `init_db()` تلقائيًا عند إقلاع التطبيق، بما في ذلك التشغيل عبر `gunicorn` على Render.
-- ملفات PDF وExcel تنشأ عند الطلب داخل `generated/`.
-- مجلد `uploads/` ينشأ تلقائيًا وقت التشغيل ولا يلزم وجوده مسبقًا داخل GitHub.
-- صور وفيديوهات المشروع الفعلية يجب أن تكون داخل `media/` بالمسارات:
-  - `media/facade.jpg`
-  - `media/apartment-1.jpg`
-  - `media/apartment-2.jpg`
-  - `media/apartment-3.jpg`
-  - `media/project-video.mp4`
+- The Flask entry point is `app.main:app`.
+- Migrations remain in the root `migrations/` folder.
+- Frontend static assets live in `app/static/`.
+- The SPA HTML shell is served from `app/templates/index.html`.

@@ -1,0 +1,119 @@
+.deal-list {
+  display: grid;
+  gap: 12px;
+}
+
+.deal-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  box-shadow: 0 12px 28px rgba(4, 8, 16, 0.22);
+}
+
+.deal-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.deal-card footer {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.deal-card-details {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.deal-card-details div {
+  padding: 10px;
+  border: 1px solid rgba(215, 176, 98, 0.22);
+  border-radius: var(--radius);
+  background: rgba(215, 176, 98, 0.08);
+}
+
+.deal-card-details span,
+.deal-card-details strong {
+  display: block;
+}
+
+.deal-card-details span {
+  color: var(--gold-soft);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.deal-card-details strong {
+  margin-top: 3px;
+  color: var(--text-strong);
+  font-weight: 900;
+}
+
+.deal-wizard-panel { overflow: hidden; }
+.wizard-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .5rem;
+  margin: 1rem 0 1.25rem;
+}
+.wizard-steps span {
+  border: 1px solid rgba(212, 175, 55, .28);
+  border-radius: 999px;
+  padding: .55rem .75rem;
+  text-align: center;
+  color: var(--text-muted);
+  background: rgba(255,255,255,.04);
+  font-size: .85rem;
+}
+.wizard-steps span.active {
+  color: var(--text-strong);
+  background: linear-gradient(135deg, rgba(212,175,55,.28), rgba(212,175,55,.08));
+  border-color: rgba(212,175,55,.65);
+}
+.wizard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.wizard-card {
+  border: 1px solid rgba(215, 176, 98, 0.28);
+  border-radius: 16px;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.05);
+}
+.wizard-card legend {
+  padding: 0 .5rem;
+  color: var(--gold, #d4af37);
+  font-weight: 700;
+}
+.wizard-summary {
+  display: grid;
+  gap: .35rem;
+  margin-top: .75rem;
+  padding: .85rem;
+  border-radius: 14px;
+  background: rgba(0,0,0,.18);
+  color: var(--text-muted);
+}
+@media (max-width: 900px) {
+  .wizard-grid { grid-template-columns: 1fr; }
+  .deal-card-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .wizard-steps { grid-template-columns: 1fr; }
+  .deal-card footer .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .deal-card-details { grid-template-columns: 1fr; }
+}

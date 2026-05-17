@@ -15,7 +15,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from db_utils import db, execute, fetchone, fetchval, hash_password, now_iso, public_id
+from app.utils.db_utils import db, execute, fetchone, fetchval, hash_password, now_iso, public_id
 
 
 OWNER_EMAIL = "admin@example.com"
