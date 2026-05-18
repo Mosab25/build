@@ -575,7 +575,7 @@ def client_payload(conn, client, include_private=True):
     # Try to load linked apartments; fall back to legacy single-apartment field
     apartments_rows = []
     try:
-        apartments_rows = fetchall(conn, "SELECT ca.id AS client_apartment_id, ca.apartment_id, ca.unit_price, ca.status AS ca_status, ca.assigned_at, a.unit_code, a.floor_number, a.apartment_type, a.area, a.direction_ar, a.direction_en, a.price AS apt_price, a.status AS apt_status, a.notes AS apt_notes FROM client_apartments ca LEFT JOIN apartments a ON a.id = ca.apartment_id WHERE ca.client_id = %s ORDER BY ca.assigned_at DESC", (client["id"],))
+        apartments_rows = fetchall(conn, "SELECT ca.id AS client_apartment_id, ca.apartment_id, ca.unit_price, ca.status AS ca_status, ca.assigned_at, a.unit_code, a.floor_number, a.apartment_type, a.area, a.direction_ar, a.direction_en, a.price AS apt_price, a.status AS apt_status, a.notes AS apt_notes, a.project_id, p.name AS project_name, p.slug AS project_slug FROM client_apartments ca LEFT JOIN apartments a ON a.id = ca.apartment_id LEFT JOIN projects p ON p.id = a.project_id WHERE ca.client_id = %s AND ca.status != 'cancelled' ORDER BY ca.assigned_at DESC", (client["id"],))
     except Exception:
         apt = fetchone(conn, "SELECT * FROM apartments WHERE id = %s", (client.get("apartment_id"),)) if client.get("apartment_id") else None
         apartments_rows = []
@@ -592,6 +592,24 @@ def client_payload(conn, client, include_private=True):
                 "ca_status": apt["status"],
                 "assigned_at": None,
             }]
+    if not apartments_rows and client.get("apartment_id"):
+        apt = fetchone(conn, "SELECT * FROM apartments WHERE id = %s", (client.get("apartment_id"),))
+        if apt:
+            apartments_rows = [{
+                "apartment_id": apt["id"],
+                "unit_code": apt["unit_code"],
+                "floor_number": apt.get("floor_number"),
+                "apartment_type": apt.get("apartment_type"),
+                "area": apt.get("area"),
+                "direction_ar": apt.get("direction_ar"),
+                "direction_en": apt.get("direction_en"),
+                "unit_price": client.get("total_amount") or apt["price"],
+                "ca_status": apt["status"],
+                "project_id": apt.get("project_id"),
+                "project_name": None,
+                "project_slug": None,
+                "assigned_at": None,
+            }]
 
     apartments = []
     for r in apartments_rows:
@@ -605,6 +623,9 @@ def client_payload(conn, client, include_private=True):
             "directionEn": r.get("direction_en"),
             "price": float(r.get("unit_price") or r.get("apt_price") or 0),
             "status": status_title(r.get("ca_status") or r.get("apt_status")),
+            "projectId": r.get("project_id"),
+            "projectName": r.get("project_name"),
+            "projectSlug": r.get("project_slug"),
             "assignedAt": r.get("assigned_at"),
         })
 

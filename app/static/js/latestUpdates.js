@@ -8,8 +8,12 @@ const UPDATE_STAGE_LABELS = {
   delivery: "التسليم",
 };
 
-function updatesLoadingState() {
-  return Array.from({ length: 3 }, () => `
+let allUpdatesPage = 1;
+let allUpdatesHasMore = false;
+let allUpdatesLoading = false;
+
+function updatesLoadingState(count = 3) {
+  return Array.from({ length: count }, () => `
     <article class="update-card update-card-skeleton" aria-hidden="true">
       <div class="skeleton-block skeleton-media"></div>
       <div class="skeleton-line short"></div>
@@ -21,50 +25,64 @@ function updatesLoadingState() {
 
 async function initLatestUpdates() {
   const grid = qs("#updatesGrid");
-  if (!grid) return;
-  grid.innerHTML = updatesLoadingState();
-  scheduleAfterFirstPaint(loadLatestUpdates);
+  if (grid) {
+    grid.innerHTML = updatesLoadingState(3);
+    scheduleAfterFirstPaint(loadLatestUpdates);
+  }
+  bindPublicUpdatesRoute();
+  handlePublicUpdatesRoute();
 }
 
 async function loadLatestUpdates() {
   const grid = qs("#updatesGrid");
   if (!grid) return;
   try {
-    const updates = await PublicAPI.publishedUpdates();
+    const result = await PublicAPI.projectUpdates(1, 3);
+    const updates = result.items || [];
     if (!updates.length) {
       renderUpdatesFallback(grid);
+      qs("#updatesHomeActions").hidden = true;
       return;
     }
-    grid.innerHTML = updates.map(renderUpdateCard).join("");
+    grid.innerHTML = updates.map((update) => renderUpdateCard(update, { compact: true })).join("");
+    qs("#updatesHomeActions").hidden = false;
     bindUpdateCards(grid);
   } catch (error) {
     grid.innerHTML = ErrorState("تعذر تحميل تحديثات المشروع الآن.", "ستظهر التحديثات تلقائيًا عند عودة الاتصال.");
+    qs("#updatesHomeActions").hidden = true;
   }
 }
 
 function refreshLatestUpdates() {
-  return loadLatestUpdates();
+  const tasks = [loadLatestUpdates()];
+  if (isAllUpdatesRoute()) tasks.push(loadAllUpdatesPage({ reset: true }));
+  return Promise.all(tasks);
 }
 
 function renderUpdatesFallback(grid) {
   grid.innerHTML = EmptyState("لا توجد تحديثات منشورة حاليًا.", "سيتم عرض تحديثات المشروع هنا فور نشرها من الإدارة.");
 }
 
-function renderUpdateCard(update) {
+function renderUpdateCard(update, options = {}) {
   const stage = UPDATE_STAGE_LABELS[update.stage] || update.stage || "عام";
   const description = plainUpdateText(update.description);
+  const compact = Boolean(options.compact);
+  const detailsHref = `#/updates?id=${encodeURIComponent(update.id || "")}`;
   return `
-    <article class="update-card" data-update-card>
+    <article class="update-card ${compact ? "update-card-compact" : ""}" data-update-card data-update-id="${escapeHTML(update.id || "")}">
       ${renderUpdateMedia(update)}
       <div class="update-card-body">
         <div class="update-meta">
           <span class="update-stage-badge">${escapeHTML(stage)}</span>
+          ${update.projectName ? `<span class="update-stage-badge project-name-badge">${escapeHTML(update.projectName)}</span>` : ""}
           <time datetime="${escapeHTML(update.update_date || "")}">${formatDate(update.update_date)}</time>
         </div>
         <h3>${escapeHTML(update.title)}</h3>
         <div class="update-content">
-          <p class="update-text" data-update-text>${escapeHTML(description)}</p>
-          <button type="button" class="read-more-btn" data-read-more hidden aria-expanded="false">قراءة المزيد</button>
+          <p class="update-text ${compact ? "update-text-compact" : ""}" data-update-text>${escapeHTML(description)}</p>
+          ${compact
+            ? `<a class="read-more-btn update-card-link" href="${detailsHref}">قراءة المزيد</a>`
+            : `<button type="button" class="read-more-btn" data-read-more hidden aria-expanded="false">قراءة المزيد</button>`}
         </div>
       </div>
     </article>
@@ -97,10 +115,21 @@ function getVideoMimeType(url, fallbackMime) {
   return fallback.startsWith("video/") ? fallback : "video/mp4";
 }
 
+function renderMediaPlaceholder(title = "تحديث المشروع") {
+  return `
+    <div class="update-media update-media-placeholder">
+      <div>
+        <strong>${escapeHTML(title)}</strong>
+        <span>لا توجد وسائط مرفقة</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderUpdateMedia(update) {
   const src = resolveMediaUrl(update.media_url);
-  if (!src) return "";
   const title = update.title || "تحديث المشروع";
+  if (!src) return renderMediaPlaceholder(title);
   const poster = resolveMediaUrl(update.thumbnail_url || "media/optimized/facade-thumb.webp");
   const mediaType = update.media_type === "video" ? "video" : "image";
 
@@ -112,7 +141,7 @@ function renderUpdateMedia(update) {
           متصفحك لا يدعم تشغيل الفيديو.
         </video>
         <button type="button" class="media-open-btn" data-media-open data-media-type="video" data-media-src="${escapeHTML(src)}" data-media-poster="${escapeHTML(poster)}" data-media-title="${escapeHTML(title)}">فتح</button>
-        <div class="media-error" hidden>تعذر تحميل الفيديو. جرّب فتحه في نافذة مستقلة أو أعد رفعه بصيغة mp4 أو webm.</div>
+        <div class="media-error" hidden>تعذر تحميل الفيديو. جرب فتحه في نافذة مستقلة أو أعد رفعه بصيغة mp4 أو webm.</div>
       </div>
     `;
   }
@@ -154,7 +183,7 @@ function bindUpdateCards(scope = document) {
         openModal(`
           <span class="eyebrow">وسائط التحديث</span>
           <h2>${escapeHTML(title)}</h2>
-          <video class="update-video modal-media" controls preload="metadata" playsinline autoplay poster="${escapeHTML(poster)}">
+          <video class="update-video modal-media" controls preload="metadata" playsinline poster="${escapeHTML(poster)}">
             <source src="${escapeHTML(src)}" type="${escapeHTML(getVideoMimeType(src))}">
             متصفحك لا يدعم تشغيل الفيديو.
           </video>
@@ -198,8 +227,95 @@ function updateReadMoreVisibility(scope = document) {
   });
 }
 
+function isAllUpdatesRoute() {
+  return window.location.hash.startsWith("#/updates");
+}
+
+function selectedUpdateFromHash() {
+  const raw = window.location.hash.split("?", 2)[1] || "";
+  return new URLSearchParams(raw).get("id") || "";
+}
+
+function bindPublicUpdatesRoute() {
+  if (document.body.dataset.publicUpdatesRouteBound) return;
+  document.body.dataset.publicUpdatesRouteBound = "true";
+  window.addEventListener("hashchange", handlePublicUpdatesRoute);
+}
+
+function handlePublicUpdatesRoute() {
+  const page = qs("#allUpdatesPage");
+  if (!page) return;
+  const open = isAllUpdatesRoute();
+  document.body.classList.toggle("public-updates-route", open);
+  page.hidden = !open;
+  if (open) {
+    loadAllUpdatesPage({ reset: true, selectedId: selectedUpdateFromHash() });
+  }
+}
+
+async function loadAllUpdatesPage({ reset = false, selectedId = "" } = {}) {
+  const grid = qs("#allUpdatesGrid");
+  const actions = qs("#allUpdatesActions");
+  if (!grid || allUpdatesLoading) return;
+  allUpdatesLoading = true;
+  try {
+    if (reset) {
+      allUpdatesPage = 1;
+      grid.innerHTML = updatesLoadingState(6);
+      actions.hidden = true;
+      actions.innerHTML = "";
+    }
+    const result = await PublicAPI.projectUpdates(allUpdatesPage, 12);
+    const updates = result.items || [];
+    if (!updates.length && allUpdatesPage === 1) {
+      grid.innerHTML = EmptyState("لا توجد تحديثات منشورة حاليًا.", "ستظهر المنشورات هنا بعد نشرها من لوحة التحكم.");
+      return;
+    }
+    const html = updates.map((update) => renderUpdateCard(update, { compact: false })).join("");
+    grid.innerHTML = allUpdatesPage === 1 ? html : `${grid.innerHTML}${html}`;
+    allUpdatesHasMore = result.hasMore;
+    renderAllUpdatesActions(actions);
+    bindUpdateCards(grid);
+    if (selectedId) expandSelectedUpdate(selectedId);
+  } catch (error) {
+    grid.innerHTML = ErrorState("تعذر تحميل كل التحديثات الآن.");
+  } finally {
+    allUpdatesLoading = false;
+  }
+}
+
+function renderAllUpdatesActions(actions) {
+  if (!actions) return;
+  actions.hidden = false;
+  actions.innerHTML = `
+    <a class="btn secondary" href="#updates">العودة إلى آخر التحديثات</a>
+    ${allUpdatesHasMore ? `<button class="btn primary" type="button" id="loadMoreUpdatesButton">تحميل المزيد</button>` : ""}
+  `;
+  qs("#loadMoreUpdatesButton")?.addEventListener("click", async () => {
+    allUpdatesPage += 1;
+    await loadAllUpdatesPage();
+  });
+}
+
+function expandSelectedUpdate(updateId) {
+  const escapedId = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(updateId) : String(updateId).replace(/"/g, '\\"');
+  const card = qs(`[data-update-id="${escapedId}"]`);
+  if (!card) return;
+  const text = qs("[data-update-text]", card);
+  const button = qs("[data-read-more]", card);
+  if (text && button) {
+    text.classList.add("expanded");
+    button.hidden = false;
+    button.textContent = "عرض أقل";
+    button.setAttribute("aria-expanded", "true");
+  }
+}
+
 let updateResizeTimer = null;
 window.addEventListener("resize", () => {
   window.clearTimeout(updateResizeTimer);
-  updateResizeTimer = window.setTimeout(() => updateReadMoreVisibility(qs("#updatesGrid") || document), 120);
+  updateResizeTimer = window.setTimeout(() => {
+    updateReadMoreVisibility(qs("#updatesGrid") || document);
+    updateReadMoreVisibility(qs("#allUpdatesGrid") || document);
+  }, 120);
 });

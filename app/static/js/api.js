@@ -87,6 +87,16 @@ const AuthAPI = {
 const PublicAPI = {
   overview: () => apiGet("/api/public/overview", { timeoutMs: 9000 }),
   publishedUpdates: () => apiGet("/api/project-updates/published", { timeoutMs: 9000 }),
+  projects: async (page = 1, limit = 12) => listPayload(await apiGet(`/api/public/projects?page=${page}&limit=${limit}`, { timeoutMs: 9000 }), "projects"),
+  project: (slug) => apiGet(`/api/public/projects/${encodeURIComponent(slug)}`, { timeoutMs: 9000 }),
+  projectUpdates: async (page = 1, limit = 3, projectSlug = "") => {
+    const projectQuery = projectSlug ? `&project_slug=${encodeURIComponent(projectSlug)}` : "";
+    return listPayload(await apiGet(`/api/public/project-updates?page=${page}&limit=${limit}${projectQuery}`, { timeoutMs: 9000 }), "updates");
+  },
+  partnerships: async (page = 1, limit = 3, projectSlug = "") => {
+    const projectQuery = projectSlug ? `&project_slug=${encodeURIComponent(projectSlug)}` : "";
+    return listPayload(await apiGet(`/api/public/partnerships?page=${page}&limit=${limit}${projectQuery}`, { timeoutMs: 9000 }), "partnerships");
+  },
   health: () => apiGet("/health", { timeoutMs: 2500 }),
   healthDb: () => apiGet("/api/health-db", { timeoutMs: 4500 }),
 };
@@ -102,6 +112,12 @@ const AdminAPI = {
   dashboardSummary: () => apiGet("/api/admin/dashboard-summary"),
   apartments: () => apiGet("/api/admin/apartments"),
   createApartment: (payload) => apiPost("/api/admin/apartments", payload),
+  projects: async (page = 1, limit = 20, status = "active") => listPayload(await apiGet(`/api/admin/projects?page=${page}&limit=${limit}&status=${encodeURIComponent(status)}`), "projects"),
+  createProject: (payload) => apiPost("/api/admin/projects", payload),
+  updateProject: (id, payload) => apiPatch(`/api/admin/projects/${id}`, payload),
+  publishProject: (id) => apiPost(`/api/admin/projects/${id}/publish`),
+  unpublishProject: (id) => apiPost(`/api/admin/projects/${id}/unpublish`),
+  archiveProject: (id) => apiPost(`/api/admin/projects/${id}/archive`),
   clients: async (page = 1, limit = 20) => listPayload(await apiGet(`/api/admin/clients?page=${page}&limit=${limit}`), "clients"),
   updateAccount: (payload) => apiPatch("/api/admin/account", payload),
   profile: () => apiGet("/api/admin/profile"),
@@ -195,4 +211,13 @@ const UpdatesAPI = {
   publish: (id) => apiPost(`/api/admin/project-updates/${id}/publish`),
   unpublish: (id) => apiPost(`/api/admin/project-updates/${id}/unpublish`),
   upload: (file) => uploadFile("/api/admin/uploads/project-update-media", file),
+};
+
+const PartnershipsAPI = {
+  list: async (page = 1, limit = 20, status = "active") => listPayload(await apiGet(`/api/admin/partnerships?page=${page}&limit=${limit}&status=${encodeURIComponent(status)}`), "partnerships"),
+  create: (payload) => apiPost("/api/admin/partnerships", payload),
+  update: (id, payload) => apiPatch(`/api/admin/partnerships/${id}`, payload),
+  publish: (id) => apiPost(`/api/admin/partnerships/${id}/publish`),
+  unpublish: (id) => apiPost(`/api/admin/partnerships/${id}/unpublish`),
+  archive: (id) => apiPost(`/api/admin/partnerships/${id}/archive`),
 };

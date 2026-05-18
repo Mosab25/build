@@ -566,6 +566,256 @@ async function saveClient(event) {
   }
 }
 
+let projectsAdminFilter = "active";
+let projectsAdminItems = [];
+
+function canManageProjects() {
+  return ["owner", "admin"].includes(APP_STATE.session?.role);
+}
+
+function renderProjectsAdminPanel() {
+  if (!canManageProjects()) {
+    return `<section class="data-panel">${ErrorState("ليس لديك صلاحية لإدارة المشاريع.")}</section>`;
+  }
+  return `
+    <section class="data-panel">
+      <div class="dashboard-topbar">
+        <div><span class="eyebrow">المشاريع</span><h3>إدارة مشاريع Bonyan Developments</h3></div>
+        <button class="btn primary small" id="newProjectButton" type="button">إضافة مشروع</button>
+      </div>
+      <div class="segmented-control" id="projectsAdminFilter">
+        <button class="btn ${projectsAdminFilter === "active" ? "primary" : "ghost"} small" data-projects-filter="active" type="button">المشاريع النشطة</button>
+        <button class="btn ${projectsAdminFilter === "archived" ? "primary" : "ghost"} small" data-projects-filter="archived" type="button">المؤرشفة</button>
+      </div>
+      <div id="projectsAdminList">${LoadingState()}</div>
+    </section>
+  `;
+}
+
+async function bindProjectsAdminPanel() {
+  qs("#newProjectButton")?.addEventListener("click", () => openProjectForm());
+  qsa("[data-projects-filter]").forEach((button) => button.addEventListener("click", async () => {
+    projectsAdminFilter = button.dataset.projectsFilter;
+    qsa("[data-projects-filter]").forEach((item) => {
+      item.classList.toggle("primary", item.dataset.projectsFilter === projectsAdminFilter);
+      item.classList.toggle("ghost", item.dataset.projectsFilter !== projectsAdminFilter);
+    });
+    await loadProjectsAdminList(true);
+  }));
+  await loadProjectsAdminList(false);
+}
+
+async function loadProjectsAdminList(force = false) {
+  const target = qs("#projectsAdminList");
+  if (!target) return;
+  try {
+    if (force) target.innerHTML = LoadingState("جاري تحديث المشاريع...");
+    const result = force || !isDashboardLoaded("projects")
+      ? await AdminAPI.projects(1, 50, projectsAdminFilter)
+      : { items: APP_STATE.dashboard?.projects || [] };
+    projectsAdminItems = result.items || [];
+    if (force) cacheDashboardData("projects", projectsAdminItems, cacheListMeta(result));
+    if (!projectsAdminItems.length) {
+      target.innerHTML = projectsAdminFilter === "archived"
+        ? EmptyState("لا توجد مشاريع مؤرشفة حاليًا.", "المشاريع التي تتم أرشفتها ستظهر هنا.")
+        : EmptyState("لا توجد مشاريع حاليًا.", "أضف مشروعًا جديدًا ليظهر في الموقع بعد نشره.");
+      return;
+    }
+    const isMobile = window.matchMedia("(max-width: 720px)").matches;
+    if (isMobile) {
+      target.innerHTML = `
+        <div class="updates-admin-mobile-list projects-admin-mobile-list">
+          ${projectsAdminItems.map((project) => `
+            <article class="updates-admin-mobile-card">
+              <h4>${escapeHTML(project.name)}</h4>
+              <div class="updates-admin-mobile-meta">
+                <span>${escapeHTML(project.location || "-")}</span>
+                ${StatusBadge(project.status)}
+              </div>
+              <span class="muted">إنجاز ${Number(project.progress || 0)}% · ${formatDate(project.deliveryDate || project.delivery_date)}</span>
+              <div class="updates-admin-mobile-actions">${renderProjectAdminActions(project)}</div>
+            </article>
+          `).join("")}
+        </div>
+      `;
+    } else {
+      target.innerHTML = `
+        <div class="table-wrap projects-admin-table-wrap">
+          <table>
+            <thead><tr><th>اسم المشروع</th><th>الموقع</th><th>الحالة</th><th>نسبة الإنجاز</th><th>التسليم المتوقع</th><th>عدد الوحدات</th><th>الترتيب</th><th>الإجراءات</th></tr></thead>
+            <tbody>${projectsAdminItems.map((project) => `
+              <tr>
+                <td data-label="اسم المشروع">${escapeHTML(project.name)}</td>
+                <td data-label="الموقع">${escapeHTML(project.location || "-")}</td>
+                <td data-label="الحالة">${StatusBadge(project.status)}</td>
+                <td data-label="نسبة الإنجاز">${Number(project.progress || 0)}%</td>
+                <td data-label="التسليم المتوقع">${formatDate(project.deliveryDate || project.delivery_date)}</td>
+                <td data-label="عدد الوحدات">${Number(project.unitsCount ?? project.units_count ?? 0)}</td>
+                <td data-label="الترتيب">${Number(project.displayOrder ?? project.display_order ?? 0)}</td>
+                <td data-label="الإجراءات" class="table-actions horizontal-actions">${renderProjectAdminActions(project)}</td>
+              </tr>
+            `).join("")}</tbody>
+          </table>
+        </div>
+      `;
+    }
+    bindProjectAdminActions();
+  } catch (error) {
+    target.innerHTML = ErrorState("تعذر تحميل المشاريع الآن.");
+  }
+}
+
+function renderProjectAdminActions(project) {
+  if (projectsAdminFilter !== "active") return `<span class="muted">-</span>`;
+  return `
+    <button class="btn secondary small" data-project-edit="${escapeHTML(project.id)}" type="button">تعديل</button>
+    ${project.status === "published"
+      ? `<button class="btn ghost small" data-project-unpublish="${escapeHTML(project.id)}" type="button">إخفاء</button>`
+      : `<button class="btn primary small" data-project-publish="${escapeHTML(project.id)}" type="button">نشر</button>`}
+    <button class="btn ghost small" data-project-open="${escapeHTML(project.slug)}" type="button">عرض الصفحة</button>
+    <button class="btn danger small" data-project-archive="${escapeHTML(project.id)}" data-project-title="${escapeHTML(project.name)}" type="button">أرشفة</button>
+  `;
+}
+
+function bindProjectAdminActions() {
+  qsa("[data-project-edit]").forEach((button) => button.addEventListener("click", () => {
+    const project = projectsAdminItems.find((item) => item.id === button.dataset.projectEdit);
+    if (project) openProjectForm(project);
+  }));
+  qsa("[data-project-publish]").forEach((button) => button.addEventListener("click", () => setProjectStatus(button, "publish")));
+  qsa("[data-project-unpublish]").forEach((button) => button.addEventListener("click", () => setProjectStatus(button, "unpublish")));
+  qsa("[data-project-open]").forEach((button) => button.addEventListener("click", () => {
+    window.location.hash = `#/projects/${button.dataset.projectOpen}`;
+  }));
+  qsa("[data-project-archive]").forEach((button) => button.addEventListener("click", () => archiveProject(button.dataset.projectArchive, button.dataset.projectTitle)));
+}
+
+async function setProjectStatus(button, action) {
+  const id = button.dataset.projectPublish || button.dataset.projectUnpublish;
+  setButtonLoading(button, true, action === "publish" ? "جاري النشر..." : "جاري الإخفاء...");
+  try {
+    if (action === "publish") await AdminAPI.publishProject(id);
+    else await AdminAPI.unpublishProject(id);
+    showToast("تم حفظ المشروع بنجاح.", "success");
+    await refreshProjectsAdminOnly();
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    setButtonLoading(button, false);
+  }
+}
+
+function archiveProject(projectId, projectTitle) {
+  if (!confirm(`هل أنت متأكد من أرشفة المشروع "${projectTitle || ""}"؟ لن يظهر في الموقع العام بعد الأرشفة.`)) return;
+  const button = qsa("[data-project-archive]").find((item) => item.dataset.projectArchive === projectId);
+  setButtonLoading(button, true, "جاري الأرشفة...");
+  AdminAPI.archiveProject(projectId)
+    .then(async () => {
+      showToast("تم أرشفة المشروع بنجاح.", "success");
+      await refreshProjectsAdminOnly();
+    })
+    .catch((error) => showToast(error.message, "error"))
+    .finally(() => setButtonLoading(button, false));
+}
+
+function openProjectForm(project = null) {
+  const isEdit = Boolean(project?.id);
+  openModal(`
+    <span class="eyebrow">المشاريع</span>
+    <h2>${isEdit ? "تعديل مشروع" : "إضافة مشروع"}</h2>
+    <form id="projectForm" class="form-grid" data-project-id="${escapeHTML(project?.id || "")}">
+      <div class="form-field"><label for="projectName">اسم المشروع</label><input id="projectName" required /></div>
+      <div class="form-field"><label for="projectSlug">slug</label><input id="projectSlug" required inputmode="latin" /></div>
+      <div class="form-field"><label for="projectLocation">الموقع</label><input id="projectLocation" /></div>
+      <div class="form-field"><label for="projectStatus">الحالة</label><select id="projectStatus"><option value="draft">draft</option><option value="published">published</option></select></div>
+      <div class="form-field full"><label for="projectShortDescription">الوصف المختصر</label><textarea id="projectShortDescription"></textarea></div>
+      <div class="form-field full"><label for="projectDescription">الوصف الكامل</label><textarea id="projectDescription"></textarea></div>
+      <div class="form-field"><label for="projectProgress">نسبة الإنجاز</label><input id="projectProgress" type="number" min="0" max="100" step="1" /></div>
+      <div class="form-field"><label for="projectDeliveryDate">تاريخ التسليم المتوقع</label><input id="projectDeliveryDate" type="date" /></div>
+      <div class="form-field"><label for="projectFloorsCount">عدد الأدوار</label><input id="projectFloorsCount" type="number" min="0" step="1" /></div>
+      <div class="form-field"><label for="projectUnitsCount">عدد الوحدات</label><input id="projectUnitsCount" type="number" min="0" step="1" /></div>
+      <div class="form-field"><label for="projectUnitsPerFloor">الوحدات في كل دور</label><input id="projectUnitsPerFloor" type="number" min="0" step="1" /></div>
+      <div class="form-field"><label for="projectDisplayOrder">ترتيب العرض</label><input id="projectDisplayOrder" type="number" step="1" /></div>
+      <div class="form-field full"><label for="projectCoverImage">صورة الغلاف</label><input id="projectCoverImage" placeholder="media/optimized/facade.webp" /></div>
+      <button class="btn primary full" type="submit">${isEdit ? "حفظ التعديل" : "حفظ المشروع"}</button>
+    </form>
+  `);
+
+  qs("#projectName").value = project?.name || "";
+  qs("#projectSlug").value = project?.slug || "";
+  qs("#projectLocation").value = project?.location || "";
+  qs("#projectStatus").value = project?.status === "published" ? "published" : "draft";
+  qs("#projectShortDescription").value = project?.shortDescription || project?.short_description || "";
+  qs("#projectDescription").value = project?.description || "";
+  qs("#projectProgress").value = project?.progress ?? 0;
+  qs("#projectDeliveryDate").value = project?.deliveryDate || project?.delivery_date || "";
+  qs("#projectFloorsCount").value = project?.floorsCount ?? project?.floors_count ?? 0;
+  qs("#projectUnitsCount").value = project?.unitsCount ?? project?.units_count ?? 0;
+  qs("#projectUnitsPerFloor").value = project?.unitsPerFloor ?? project?.units_per_floor ?? 0;
+  qs("#projectDisplayOrder").value = project?.displayOrder ?? project?.display_order ?? 0;
+  qs("#projectCoverImage").value = project?.coverImage || project?.cover_image || "";
+  if (!isEdit) {
+    qs("#projectName").addEventListener("input", () => {
+      if (!qs("#projectSlug").dataset.touched) qs("#projectSlug").value = slugifyProjectInput(qs("#projectName").value);
+    });
+    qs("#projectSlug").addEventListener("input", () => {
+      qs("#projectSlug").dataset.touched = "true";
+      qs("#projectSlug").value = slugifyProjectInput(qs("#projectSlug").value);
+    });
+  }
+  qs("#projectForm").addEventListener("submit", saveProject);
+}
+
+function slugifyProjectInput(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9\u0600-\u06ff_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+async function saveProject(event) {
+  event.preventDefault();
+  const form = qs("#projectForm");
+  const projectId = form.dataset.projectId;
+  const submitButton = form.querySelector("button[type='submit']");
+  const payload = {
+    name: qs("#projectName").value.trim(),
+    slug: slugifyProjectInput(qs("#projectSlug").value),
+    location: qs("#projectLocation").value.trim(),
+    short_description: qs("#projectShortDescription").value.trim(),
+    description: qs("#projectDescription").value.trim(),
+    status: qs("#projectStatus").value,
+    progress: Number(qs("#projectProgress").value || 0),
+    delivery_date: qs("#projectDeliveryDate").value,
+    floors_count: Number(qs("#projectFloorsCount").value || 0),
+    units_count: Number(qs("#projectUnitsCount").value || 0),
+    units_per_floor: Number(qs("#projectUnitsPerFloor").value || 0),
+    cover_image: qs("#projectCoverImage").value.trim(),
+    display_order: Number(qs("#projectDisplayOrder").value || 0),
+  };
+  try {
+    setButtonLoading(submitButton, true, "جاري حفظ المشروع...");
+    if (projectId) await AdminAPI.updateProject(projectId, payload);
+    else await AdminAPI.createProject(payload);
+    closeModal();
+    showToast("تم حفظ المشروع بنجاح.", "success");
+    await refreshProjectsAdminOnly();
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    setButtonLoading(submitButton, false);
+  }
+}
+
+async function refreshProjectsAdminOnly() {
+  invalidateDashboardCache(["projects"]);
+  await loadProjectsAdminList(true);
+  if (typeof refreshProjectsPage === "function") refreshProjectsPage();
+}
+
 function normalizeAmountForInput(value) {
   return normalizeAmountValue(value).replace(/[^\d]/g, "");
 }

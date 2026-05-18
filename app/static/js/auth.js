@@ -8,7 +8,7 @@ function initAuth() {
   qs("#logoutButton").addEventListener("click", logoutStaff);
   qs("#refreshDashboard").addEventListener("click", () => refreshCurrentDashboardView());
   qs("#refreshDashboardSidebar")?.addEventListener("click", () => refreshCurrentDashboardView());
-  qs("#dashboardMenuToggle")?.addEventListener("click", openDashboardSidebarDrawer);
+  qs("#dashboardMenuToggle")?.addEventListener("click", toggleDashboardSidebarDrawer);
   qs("#dashboardDrawerClose")?.addEventListener("click", closeDashboardSidebarDrawer);
   qs("#dashboardSidebarOverlay")?.addEventListener("click", closeDashboardSidebarDrawer);
   document.addEventListener("click", closeClientMoreDropdownsOnOutsideClick);
@@ -80,17 +80,38 @@ function showStaffApp() {
 function openDashboardSidebarDrawer() {
   const shell = qs("#staffApp");
   const overlay = qs("#dashboardSidebarOverlay");
+  const sidebar = qs("#dashboardSidebar");
+  const toggle = qs("#dashboardMenuToggle");
   if (!shell || !overlay) return;
   shell.classList.add("sidebar-open");
   overlay.hidden = false;
+  overlay.setAttribute("aria-hidden", "false");
+  sidebar?.setAttribute("aria-hidden", "false");
+  toggle?.setAttribute("aria-expanded", "true");
 }
 
 function closeDashboardSidebarDrawer() {
   const shell = qs("#staffApp");
   const overlay = qs("#dashboardSidebarOverlay");
+  const sidebar = qs("#dashboardSidebar");
+  const toggle = qs("#dashboardMenuToggle");
   if (!shell || !overlay) return;
   shell.classList.remove("sidebar-open");
   overlay.hidden = true;
+  overlay.setAttribute("aria-hidden", "true");
+  sidebar?.setAttribute("aria-hidden", "true");
+  toggle?.setAttribute("aria-expanded", "false");
+}
+
+function toggleDashboardSidebarDrawer(event) {
+  event?.preventDefault();
+  event?.stopPropagation();
+  const shell = qs("#staffApp");
+  if (shell?.classList.contains("sidebar-open")) {
+    closeDashboardSidebarDrawer();
+    return;
+  }
+  openDashboardSidebarDrawer();
 }
 
 function openMustChangePasswordDialog() {
@@ -222,7 +243,10 @@ function cacheDashboardData(key, value, meta = null) {
     APP_STATE.dashboard.auditLogs = value || [];
     APP_STATE.dashboard.auditPagination = meta;
   } else if (key === "users") APP_STATE.dashboard.users = value || [];
-  else if (key === "updates") {
+  else if (key === "projects") {
+    APP_STATE.dashboard.projects = value || [];
+    APP_STATE.dashboard.projectsPagination = meta;
+  } else if (key === "updates") {
     APP_STATE.dashboard.updates = value || [];
     APP_STATE.dashboard.updatesPagination = meta;
   }
@@ -270,6 +294,7 @@ function activeDashboardDataKeys() {
     }
     if (view === "audit") return ["ownerAudit"];
     if (view === "updates") return ["updates"];
+    if (view === "projects") return ["projects"];
     return ["ownerSummary"];
   }
   if (view === "newDeal") return ["apartments"];
@@ -278,6 +303,7 @@ function activeDashboardDataKeys() {
   if (view === "payments") return ["payments"];
   if (view === "installments") return ["installments"];
   if (view === "updates") return ["updates"];
+  if (view === "projects") return ["projects"];
   if (view === "audit") return ["auditLogs"];
   if (view === "operations") return ["clients"];
   return [];
@@ -444,6 +470,11 @@ async function loadDashboardDataset(key) {
   }
   if (key === "updates") {
     const result = await UpdatesAPI.list();
+    cacheDashboardData(key, result.items || [], cacheListMeta(result));
+    return;
+  }
+  if (key === "projects") {
+    const result = await AdminAPI.projects();
     cacheDashboardData(key, result.items || [], cacheListMeta(result));
     return;
   }

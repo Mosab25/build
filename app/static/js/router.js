@@ -12,6 +12,7 @@ function renderDashboardNav(role) {
           ["approvals", "الموافقات"],
           ["operations", "التشغيل"],
           ["updates", "المنشورات"],
+          ["partnerships", "الشراكات"],
           ["settings", "الإعدادات"],
           ["audit", "النشاط"],
         ]
@@ -21,6 +22,7 @@ function renderDashboardNav(role) {
           ["payments", "المدفوعات"],
           ["installments", "الأقساط"],
           ["updates", "المنشورات"],
+          ["partnerships", "الشراكات"],
           ["settings", "بيانات الدخول"],
         ];
 
@@ -215,23 +217,29 @@ function dashboardMainNav(role, isMobile) {
     ];
   }
   if (isMobile) {
-    return [
+    const items = [
       ["overview", "الرئيسية"],
       ["operations", "التشغيل"],
       ["deals", "الديلات"],
       ["updates", "المنشورات"],
+      ["partnerships", "الشراكات"],
       ["settings", "الإعدادات"],
       ["audit", "سجل النشاط"],
     ];
+    if (role === "owner" || role === "admin") items.splice(3, 0, ["projects", "المشاريع"]);
+    return items;
   }
-  return [
+  const items = [
     ["overview", "الرئيسية"],
     ["operations", "التشغيل"],
     ["deals", "الديلات"],
     ["updates", "المنشورات"],
+    ["partnerships", "الشراكات"],
     ["settings", "الإعدادات"],
     ["audit", "سجل النشاط"],
   ];
+  if (role === "owner" || role === "admin") items.splice(3, 0, ["projects", "المشاريع"]);
+  return items;
 }
 
 renderDashboardNav = function renderDashboardNavSimplified(role) {
@@ -302,6 +310,7 @@ function renderDashboardMoreMenu(role) {
       <h3>المزيد</h3>
       <div class="panel-actions more-menu-actions">
         <button class="btn secondary full" type="button" data-more-view="updates">المنشورات</button>
+        <button class="btn secondary full" type="button" data-more-view="partnerships">الشراكات</button>
         <button class="btn secondary full" type="button" data-more-view="settings">الإعدادات</button>
         <button class="btn secondary full" type="button" data-more-view="audit">${role === "owner" ? "سجل النشاط" : "سجل النشاط"}</button>
         <button class="btn ghost full" type="button" id="moreMenuLogout">تسجيل الخروج</button>
@@ -335,6 +344,23 @@ renderActiveDashboardView = function renderActiveDashboardViewSimplified() {
     }
     content.innerHTML = renderDealsOwnerUnified();
     bindDealsOwnerUnified();
+    return;
+  }
+
+  if ((role === "owner" || role === "admin") && view === "partnerships") {
+    content.innerHTML = renderPartnershipsAdminPanel();
+    bindPartnershipsAdminPanel();
+    return;
+  }
+
+  if ((role === "owner" || role === "admin") && view === "projects") {
+    if (!isDashboardLoaded("projects")) {
+      content.innerHTML = LoadingState("جاري تحميل المشاريع...");
+      ensureDashboardData(["projects"], view);
+      return;
+    }
+    content.innerHTML = renderProjectsAdminPanel();
+    bindProjectsAdminPanel();
     return;
   }
 

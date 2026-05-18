@@ -70,6 +70,7 @@ function renderApartmentUnitsTable(units = []) {
 
 function renderClientDashboard(client) {
   const progress = Number(client.paymentProgress ?? client.payment_progress ?? 0);
+  const projectNames = [...new Set((client.apartments || []).map((unit) => unit.projectName || unit.apartment?.projectName).filter(Boolean))];
   const whatsappMessage = `مرحبًا، أريد الاستفسار عن الحجز الخاص بي. كود الحجز: ${client.code}`;
 
   qs("#clientDashboard").innerHTML = `
@@ -79,6 +80,7 @@ function renderClientDashboard(client) {
       <div class="detail-grid">
         <div class="detail-item"><span>كود الحجز الموحد</span><strong>${escapeHTML(client.code)}</strong></div>
         <div class="detail-item"><span>حالة الحجز</span><strong>${StatusBadge(client.reservationStatus)}</strong></div>
+        <div class="detail-item"><span>المشروع</span><strong>${escapeHTML(projectNames.join("، ") || "عقار في أرض عبدالجليل")}</strong></div>
         <div class="detail-item"><span>تاريخ الحجز</span><strong>${formatDate(client.reservationDate)}</strong></div>
         <div class="detail-item"><span>تاريخ الاستلام المتوقع</span><strong>${formatDate(client.expectedDeliveryDate)}</strong></div>
       </div>

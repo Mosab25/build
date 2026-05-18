@@ -7,6 +7,7 @@ import io
 import json
 import mimetypes
 import os
+import re
 import secrets
 import threading
 import time
@@ -64,6 +65,8 @@ UPDATE_MIME_TYPES = {
 ALLOWED_UPDATE_EXTENSIONS = set(UPDATE_MIME_TYPES)
 UPDATE_VIDEO_EXTENSIONS = {"mp4", "webm"}
 MAX_UPDATE_UPLOAD_MB = 80
+DEFAULT_PROJECT_SLUG = "abd-elgalil"
+DEFAULT_PROJECT_ID = "project_abd_elgalil"
 
 SESSION_COOKIE = "real_estate_admin_session"
 SESSION_DAYS = 14
@@ -215,6 +218,12 @@ def upload_project_update_to_cloudinary(uploaded, extension: str) -> dict[str, s
 def project_update_payload(row: Any) -> dict[str, Any]:
     payload = dict(row)
     payload["mimeType"] = project_update_mime_type(payload.get("media_url"))
+    if "project_name" in payload:
+        payload["projectName"] = normalize_display_text(payload.get("project_name"))
+    if "project_slug" in payload:
+        payload["projectSlug"] = payload.get("project_slug")
+    if "project_id" in payload:
+        payload["projectId"] = payload.get("project_id")
     return payload
 
 
@@ -616,6 +625,27 @@ def init_db() -> None:
               updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS projects (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              slug TEXT NOT NULL UNIQUE,
+              location TEXT,
+              short_description TEXT,
+              description TEXT,
+              status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','archived')),
+              progress INTEGER NOT NULL DEFAULT 0,
+              delivery_date TEXT,
+              floors_count INTEGER NOT NULL DEFAULT 0,
+              units_count INTEGER NOT NULL DEFAULT 0,
+              units_per_floor INTEGER NOT NULL DEFAULT 0,
+              cover_image TEXT,
+              is_active BOOLEAN NOT NULL DEFAULT TRUE,
+              display_order INTEGER NOT NULL DEFAULT 0,
+              created_by TEXT REFERENCES admins(id),
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS project_updates (
               id TEXT PRIMARY KEY,
               title TEXT NOT NULL,
@@ -628,6 +658,21 @@ def init_db() -> None:
               status TEXT NOT NULL DEFAULT 'draft',
               display_order INTEGER DEFAULT 0,
               created_by TEXT NOT NULL REFERENCES admins(id),
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS partnerships (
+              id TEXT PRIMARY KEY,
+              partner_name TEXT NOT NULL,
+              title TEXT NOT NULL,
+              short_description TEXT,
+              description TEXT,
+              image_url TEXT,
+              link_url TEXT,
+              status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','archived')),
+              display_order INTEGER NOT NULL DEFAULT 0,
+              created_by TEXT REFERENCES admins(id),
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -683,6 +728,8 @@ def init_db() -> None:
         ensure_payment_record_status_schema(conn)
         ensure_deals_owner_schema(conn)
         ensure_contracts_schema(conn)
+        ensure_projects_schema(conn)
+        ensure_partnerships_schema(conn)
         ensure_runtime_indexes(conn)
     seed_defaults()
     if env_flag("REPAIR_MOJIBAKE_ON_STARTUP", False):
@@ -790,6 +837,49 @@ def ensure_contracts_schema(conn) -> None:
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_contract_number ON contracts(contract_number) WHERE contract_number IS NOT NULL")
 
 
+def ensure_projects_schema(conn) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS projects (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          slug TEXT NOT NULL UNIQUE,
+          location TEXT,
+          short_description TEXT,
+          description TEXT,
+          status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','archived')),
+          progress INTEGER NOT NULL DEFAULT 0,
+          delivery_date TEXT,
+          floors_count INTEGER NOT NULL DEFAULT 0,
+          units_count INTEGER NOT NULL DEFAULT 0,
+          units_per_floor INTEGER NOT NULL DEFAULT 0,
+          cover_image TEXT,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          display_order INTEGER NOT NULL DEFAULT 0,
+          created_by TEXT REFERENCES admins(id),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS location TEXT")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS short_description TEXT")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS description TEXT")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS progress INTEGER NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS delivery_date TEXT")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS floors_count INTEGER NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS units_count INTEGER NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS units_per_floor INTEGER NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS cover_image TEXT")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS created_by TEXT")
+    conn.execute("ALTER TABLE apartments ADD COLUMN IF NOT EXISTS project_id TEXT REFERENCES projects(id)")
+    conn.execute("ALTER TABLE project_updates ADD COLUMN IF NOT EXISTS project_id TEXT REFERENCES projects(id)")
+    conn.execute("ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS project_id TEXT REFERENCES projects(id)")
+    conn.execute("ALTER TABLE deals ADD COLUMN IF NOT EXISTS project_id TEXT REFERENCES projects(id)")
+
+
 def ensure_client_apartments_schema(conn) -> None:
     # New linking table for clients -> apartments (simple, migration-friendly)
     conn.execute("""
@@ -824,6 +914,32 @@ def ensure_client_apartments_schema(conn) -> None:
     conn.execute("UPDATE apartments SET assigned_client_id = NULL WHERE assigned_client_id IS NOT NULL AND assigned_client_id NOT IN (SELECT client_id FROM client_apartments WHERE status != 'cancelled')")
 
 
+def ensure_partnerships_schema(conn) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS partnerships (
+          id TEXT PRIMARY KEY,
+          partner_name TEXT NOT NULL,
+          title TEXT NOT NULL,
+          short_description TEXT,
+          description TEXT,
+          image_url TEXT,
+          link_url TEXT,
+          status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','archived')),
+          display_order INTEGER NOT NULL DEFAULT 0,
+          created_by TEXT REFERENCES admins(id),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS short_description TEXT")
+    conn.execute("ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS description TEXT")
+    conn.execute("ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS image_url TEXT")
+    conn.execute("ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS link_url TEXT")
+    conn.execute("ALTER TABLE partnerships ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0")
+
+
 def ensure_runtime_indexes(conn) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_client_code ON clients(client_code)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_national_id ON clients(national_id)")
@@ -837,7 +953,15 @@ def ensure_runtime_indexes(conn) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_installments_client_status ON installments(client_id, status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_installments_due_date ON installments(due_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_deals_status ON deals(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_display_order ON projects(display_order, created_at DESC)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_apartments_project_id ON apartments(project_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_project_updates_project_id ON project_updates(project_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_project_updates_status ON project_updates(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_partnerships_project_id ON partnerships(project_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_partnerships_status ON partnerships(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_partnerships_display_order ON partnerships(display_order, created_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)")
 
 
@@ -862,6 +986,10 @@ def repair_mojibake_data(conn: Any) -> None:
         ("audit_logs", "description", "id"),
         ("project_updates", "title", "id"),
         ("project_updates", "description", "id"),
+        ("partnerships", "partner_name", "id"),
+        ("partnerships", "title", "id"),
+        ("partnerships", "short_description", "id"),
+        ("partnerships", "description", "id"),
         ("settings", "value", "key"),
     ]
     for table, column, key_column in updates:
@@ -876,6 +1004,66 @@ def repair_mojibake_data(conn: Any) -> None:
                     f"UPDATE {table} SET {column} = ? WHERE {key_column} = ?",
                     (repaired, row["row_id"]),
                 )
+
+
+def seed_default_project(conn: Any) -> str:
+    existing = conn.execute("SELECT id FROM projects WHERE slug = ?", (DEFAULT_PROJECT_SLUG,)).fetchone()
+    if existing:
+        return existing["id"]
+    now = now_iso()
+    conn.execute(
+        """
+        INSERT INTO projects (
+          id, name, slug, location, short_description, description, status, progress,
+          delivery_date, floors_count, units_count, units_per_floor, cover_image,
+          is_active, display_order, created_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'published', 0, ?, 7, 21, 3, ?, TRUE, 1, NULL, ?, ?)
+        """,
+        (
+            DEFAULT_PROJECT_ID,
+            "عقار في أرض عبدالجليل",
+            DEFAULT_PROJECT_SLUG,
+            "أرض عبدالجليل",
+            "مشروع عقاري تحت الإنشاء بإدارة ومتابعة Bonyan Developments، يهدف إلى تقديم تجربة سكنية أكثر تنظيمًا ووضوحًا للعملاء.",
+            "مشروع عقاري تحت الإنشاء ضمن مشاريع Bonyan Developments، يتم تنفيذه ومتابعته بمنهج منظم يركز على جودة البناء، وضوح البيانات، وتحديث العملاء بشكل مستمر.",
+            "2026-11-13",
+            "media/optimized/facade.webp",
+            now,
+            now,
+        ),
+    )
+    try:
+        audit(conn, None, "create", "project", DEFAULT_PROJECT_ID, "تم إنشاء المشروع الافتراضي للداتا الحالية", None, {"slug": DEFAULT_PROJECT_SLUG})
+    except Exception:
+        pass
+    return DEFAULT_PROJECT_ID
+
+
+def backfill_default_project_relations(conn: Any, project_id: str) -> None:
+    targets = (
+        ("apartments", "ربط الشقق القديمة بالمشروع الافتراضي"),
+        ("project_updates", "ربط تحديثات المشروع القديمة بالمشروع الافتراضي"),
+        ("partnerships", "ربط الشراكات القديمة بالمشروع الافتراضي"),
+        ("deals", "ربط الديلات القديمة بالمشروع الافتراضي"),
+    )
+    for table, description in targets:
+        try:
+            count = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE project_id IS NULL").fetchone()[0]
+            if not count:
+                continue
+            conn.execute(f"UPDATE {table} SET project_id = ?, updated_at = ? WHERE project_id IS NULL", (project_id, now_iso()))
+            audit(
+                conn,
+                None,
+                "backfill_project_id",
+                "project",
+                project_id,
+                description,
+                {"table": table, "project_id": None, "count": count},
+                {"table": table, "project_id": project_id, "count": count},
+            )
+        except Exception:
+            continue
 
 
 def seed_defaults() -> None:
@@ -906,6 +1094,32 @@ def seed_defaults() -> None:
                 (key, value, now_iso()),
             )
 
+        default_project_id = seed_default_project(conn)
+        backfill_default_project_relations(conn, default_project_id)
+
+        partnership_count = conn.execute("SELECT COUNT(*) FROM partnerships").fetchone()[0]
+        if partnership_count == 0:
+            conn.execute(
+                """
+                INSERT INTO partnerships (
+                  id, partner_name, title, short_description, description, image_url, link_url,
+                  project_id, status, display_order, created_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'published', 1, NULL, ?, ?)
+                """,
+                (
+                    "partnership_bonyan_developments",
+                    "Bonyan Developments",
+                    "شراكة تطوير وتنفيذ",
+                    "Bonyan Developments تقود رؤية تطويرية لمشروع عقاري في أرض عبدالجليل.",
+                    "تأتي هذه الشراكة لتعزيز جودة التنفيذ وتنظيم مراحل المتابعة، من خلال رؤية تطويرية حديثة تجمع بين التخطيط الهندسي، المتابعة الدقيقة، والالتزام بتقديم تجربة عقارية أكثر وضوحًا واحترافية للعملاء.",
+                    "media/partnership-bonyan-abdeljalil.png",
+                    "#overview",
+                    default_project_id,
+                    now_iso(),
+                    now_iso(),
+                ),
+            )
+
         apt_count = conn.execute("SELECT COUNT(*) FROM apartments").fetchone()[0]
         if apt_count == 0:
             specs = {
@@ -920,8 +1134,8 @@ def seed_defaults() -> None:
                         """
                         INSERT INTO apartments (
                           id, unit_code, floor_number, apartment_type, area, direction_ar, direction_en,
-                          price, status, assigned_client_id, notes, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'available', NULL, NULL, ?, ?)
+                          price, status, assigned_client_id, notes, project_id, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'available', NULL, NULL, ?, ?, ?)
                         """,
                         (
                             f"apt_{unit_code}",
@@ -932,6 +1146,7 @@ def seed_defaults() -> None:
                             direction_ar,
                             direction_en,
                             base_price,
+                            default_project_id,
                             now_iso(),
                             now_iso(),
                         ),
@@ -1362,7 +1577,7 @@ def client_payload(conn: Any, client: dict[str, Any], include_private: bool = Tr
     apartments_rows = []
     try:
         apartments_rows = conn.execute(
-            "SELECT ca.id AS client_apartment_id, ca.apartment_id AS apartment_id, ca.unit_price AS unit_price, ca.status AS ca_status, ca.assigned_at AS assigned_at, a.unit_code, a.floor_number, a.apartment_type, a.area, a.direction_ar, a.direction_en, a.price AS apt_price, a.status AS apt_status, a.notes AS apt_notes FROM client_apartments ca LEFT JOIN apartments a ON a.id = ca.apartment_id WHERE ca.client_id = ? ORDER BY ca.assigned_at DESC",
+            "SELECT ca.id AS client_apartment_id, ca.apartment_id AS apartment_id, ca.unit_price AS unit_price, ca.status AS ca_status, ca.assigned_at AS assigned_at, a.unit_code, a.floor_number, a.apartment_type, a.area, a.direction_ar, a.direction_en, a.price AS apt_price, a.status AS apt_status, a.notes AS apt_notes, a.project_id, p.name AS project_name, p.slug AS project_slug FROM client_apartments ca LEFT JOIN apartments a ON a.id = ca.apartment_id LEFT JOIN projects p ON p.id = a.project_id WHERE ca.client_id = ? AND ca.status != 'cancelled' ORDER BY ca.assigned_at DESC",
             (client["id"],),
         ).fetchall()
     except Exception:
@@ -1382,6 +1597,24 @@ def client_payload(conn: Any, client: dict[str, Any], include_private: bool = Tr
                 "ca_status": apt["status"],
                 "assigned_at": None,
             }]
+    if not apartments_rows and client.get("apartment_id"):
+        apt = conn.execute("SELECT * FROM apartments WHERE id = ?", (client.get("apartment_id"),)).fetchone()
+        if apt:
+            apartments_rows = [{
+                "apartment_id": apt["id"],
+                "unit_code": apt["unit_code"],
+                "floor_number": apt["floor_number"],
+                "apartment_type": apt["apartment_type"],
+                "area": apt["area"],
+                "direction_ar": apt["direction_ar"],
+                "direction_en": apt["direction_en"],
+                "unit_price": client.get("total_amount") or apt["price"],
+                "ca_status": apt["status"],
+                "project_id": apt.get("project_id"),
+                "project_name": None,
+                "project_slug": None,
+                "assigned_at": None,
+            }]
 
     apartments = []
     for row in apartments_rows:
@@ -1395,6 +1628,9 @@ def client_payload(conn: Any, client: dict[str, Any], include_private: bool = Tr
             "directionEn": row.get("direction_en"),
             "price": float(row.get("unit_price") or row.get("apt_price") or 0),
             "status": status_title(row.get("ca_status") or row.get("apt_status")),
+            "projectId": row.get("project_id"),
+            "projectName": normalize_display_text(row.get("project_name")) or ("عقار في أرض عبدالجليل" if row.get("project_id") == DEFAULT_PROJECT_ID else None),
+            "projectSlug": row.get("project_slug") or (DEFAULT_PROJECT_SLUG if row.get("project_id") == DEFAULT_PROJECT_ID else None),
             "assignedAt": row.get("assigned_at"),
         })
 
@@ -1475,18 +1711,53 @@ def recalc_portfolio_rows(conn: Any, rows: list[dict[str, Any]]) -> list[dict[st
 def portfolio_payload(conn: Any, rows: list[dict[str, Any]], include_private: bool = False) -> dict[str, Any]:
     unit_payloads = [client_payload(conn, row, include_private=include_private) for row in rows]
     primary = unit_payloads[0]
+    apartments: list[dict[str, Any]] = []
     all_payments = []
     all_installments = []
+    apartment_unit_codes: dict[str, str] = {}
     for item in unit_payloads:
+        for apartment in item.get("apartments", []) or ([item.get("apartment")] if item.get("apartment") else []):
+            if not apartment or not apartment.get("id"):
+                continue
+            apartment_id = apartment.get("id")
+            if any(existing.get("id") == apartment_id for existing in apartments):
+                continue
+            apartment_unit_codes[apartment_id] = apartment.get("unitCode") or ""
+            apartments.append({
+                "id": apartment_id,
+                "apartmentId": apartment_id,
+                "clientId": item["id"],
+                "unitCode": apartment.get("unitCode"),
+                "floorNumber": apartment.get("floorNumber"),
+                "apartmentType": apartment.get("apartmentType"),
+                "area": apartment.get("area"),
+                "directionAr": apartment.get("directionAr"),
+                "directionEn": apartment.get("directionEn"),
+                "price": float(apartment.get("price") or 0),
+                "status": apartment.get("status") or item["reservationStatus"],
+                "projectId": apartment.get("projectId"),
+                "projectName": apartment.get("projectName"),
+                "projectSlug": apartment.get("projectSlug"),
+                "reservationCode": item["reservationCode"],
+                "reservationStatus": item["reservationStatus"],
+                "paymentStatus": item["paymentStatus"],
+                "totalAmount": float(apartment.get("price") or 0),
+                "paidAmount": 0,
+                "remainingAmount": float(apartment.get("price") or 0),
+                "paymentProgress": item.get("paymentProgress", 0),
+                "apartment": apartment,
+            })
         for payment in item.get("payments", []):
-            payment["unitCode"] = item.get("apartment", {}).get("unitCode")
+            payment["unitCode"] = payment.get("unitCode") or apartment_unit_codes.get(payment.get("apartmentId")) or item.get("apartment", {}).get("unitCode")
             all_payments.append(payment)
         for installment in item.get("installments", []):
-            installment["unitCode"] = item.get("apartment", {}).get("unitCode")
+            installment["unitCode"] = installment.get("unitCode") or apartment_unit_codes.get(installment.get("apartmentId")) or item.get("apartment", {}).get("unitCode")
             all_installments.append(installment)
     all_payments.sort(key=lambda x: (x.get("date") or "", x.get("id") or ""), reverse=True)
     all_installments.sort(key=lambda x: ((x.get("dueDate") or ""), x.get("installmentNumber") or 0))
-    total_amount = sum(float(item["totalAmount"] or 0) for item in unit_payloads)
+    total_amount = sum(float(apartment.get("price") or 0) for apartment in apartments)
+    if total_amount <= 0:
+        total_amount = sum(float(item["totalAmount"] or 0) for item in unit_payloads)
     paid_amount = sum(
         float(payment.get("amount") or 0)
         for payment in all_payments
@@ -1518,30 +1789,7 @@ def portfolio_payload(conn: Any, rows: list[dict[str, Any]], include_private: bo
         "remainingAmount": remaining_amount,
         "paymentProgress": payment_progress,
         "paymentStatus": payment_status,
-        "apartments": [
-            {
-                "id": (item.get("apartment") or {}).get("id"),
-                "apartmentId": (item.get("apartment") or {}).get("id"),
-                "clientId": item["id"],
-                "unitCode": (item.get("apartment") or {}).get("unitCode"),
-                "floorNumber": (item.get("apartment") or {}).get("floorNumber"),
-                "apartmentType": (item.get("apartment") or {}).get("apartmentType"),
-                "area": (item.get("apartment") or {}).get("area"),
-                "directionAr": (item.get("apartment") or {}).get("directionAr"),
-                "directionEn": (item.get("apartment") or {}).get("directionEn"),
-                "price": float(item.get("totalAmount") or (item.get("apartment") or {}).get("price") or 0),
-                "status": (item.get("apartment") or {}).get("status") or item["reservationStatus"],
-                "reservationCode": item["reservationCode"],
-                "reservationStatus": item["reservationStatus"],
-                "paymentStatus": item["paymentStatus"],
-                "totalAmount": item["totalAmount"],
-                "paidAmount": item["paidAmount"],
-                "remainingAmount": item["remainingAmount"],
-                "paymentProgress": item.get("paymentProgress", 0),
-                "apartment": item.get("apartment"),
-            }
-            for item in unit_payloads
-        ],
+        "apartments": apartments,
         "apartment": primary.get("apartment"),
         "payments": all_payments,
         "installments": all_installments,
@@ -4063,15 +4311,23 @@ def owner_clients() -> Response:
         return admin
     page = request_page()
     limit = request_limit()
-    offset = (page - 1) * limit
     with db() as conn:
         consolidate_client_portfolios(conn)
-        total = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
-        rows = conn.execute("SELECT * FROM clients ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset)).fetchall()
-        for client in rows:
-            recalc_client(conn, client["id"])
-        rows = conn.execute("SELECT * FROM clients ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset)).fetchall()
-        return jsonify(paginated_payload("clients", [client_payload(conn, row) for row in rows], total, page, limit))
+        rows = conn.execute("SELECT * FROM clients ORDER BY created_at DESC").fetchall()
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            key = portfolio_key_for_client(row) or row["id"]
+            groups.setdefault(key, []).append(row)
+
+        grouped_items = []
+        for group_rows in groups.values():
+            refreshed_rows = recalc_portfolio_rows(conn, group_rows)
+            grouped_items.append(portfolio_payload(conn, refreshed_rows, include_private=True))
+
+        total = len(grouped_items)
+        offset = (page - 1) * limit
+        items = grouped_items[offset : offset + limit]
+        return jsonify(paginated_payload("clients", items, total, page, limit))
 
 
 @app.get("/api/owner/clients/<client_id>")
@@ -4522,23 +4778,525 @@ def export_excel(kind: str) -> Response:
     return workbook_response(wb, f"{kind}.xlsx")
 
 
+# Projects API Endpoints
+def normalize_project_slug(value: Any) -> str:
+    slug = str(value or "").strip().lower()
+    slug = re.sub(r"\s+", "-", slug)
+    slug = re.sub(r"[^a-z0-9\u0600-\u06ff_-]+", "-", slug)
+    slug = re.sub(r"-+", "-", slug).strip("-_")
+    return slug
+
+
+def project_payload(row: Any) -> dict[str, Any]:
+    payload = dict(row)
+    return {
+        "id": payload.get("id"),
+        "name": normalize_display_text(payload.get("name")),
+        "slug": payload.get("slug"),
+        "location": normalize_display_text(payload.get("location")),
+        "short_description": normalize_display_text(payload.get("short_description")),
+        "shortDescription": normalize_display_text(payload.get("short_description")),
+        "description": normalize_display_text(payload.get("description")),
+        "status": payload.get("status"),
+        "progress": int(payload.get("progress") or 0),
+        "delivery_date": payload.get("delivery_date"),
+        "deliveryDate": payload.get("delivery_date"),
+        "floors_count": int(payload.get("floors_count") or 0),
+        "floorsCount": int(payload.get("floors_count") or 0),
+        "units_count": int(payload.get("units_count") or 0),
+        "unitsCount": int(payload.get("units_count") or 0),
+        "units_per_floor": int(payload.get("units_per_floor") or 0),
+        "unitsPerFloor": int(payload.get("units_per_floor") or 0),
+        "cover_image": payload.get("cover_image"),
+        "coverImage": payload.get("cover_image"),
+        "is_active": bool(payload.get("is_active")),
+        "isActive": bool(payload.get("is_active")),
+        "display_order": int(payload.get("display_order") or 0),
+        "displayOrder": int(payload.get("display_order") or 0),
+        "created_by": payload.get("created_by"),
+        "createdBy": payload.get("created_by"),
+        "created_at": payload.get("created_at"),
+        "createdAt": payload.get("created_at"),
+        "updated_at": payload.get("updated_at"),
+        "updatedAt": payload.get("updated_at"),
+    }
+
+
+def default_project_id(conn: Any) -> str:
+    return seed_default_project(conn)
+
+
+def project_id_for_slug(conn: Any, slug: str) -> str | None:
+    normalized = normalize_project_slug(slug)
+    if not normalized:
+        return None
+    row = conn.execute("SELECT id FROM projects WHERE slug = ?", (normalized,)).fetchone()
+    return row["id"] if row else None
+
+
+def validate_project_payload(payload: dict[str, Any], *, partial: bool = False, conn: Any | None = None, project_id: str | None = None) -> tuple[dict[str, Any] | None, Response | None]:
+    cleaned: dict[str, Any] = {}
+    if not partial or "name" in payload:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            return None, (jsonify({"error": "validation", "message": "اسم المشروع مطلوب."}), 400)
+        cleaned["name"] = name
+    if not partial or "slug" in payload:
+        slug = normalize_project_slug(payload.get("slug"))
+        if not slug:
+            return None, (jsonify({"error": "validation", "message": "رابط المشروع مطلوب."}), 400)
+        if conn:
+            params: tuple[Any, ...] = (slug,) if not project_id else (slug, project_id)
+            duplicate_sql = "SELECT id FROM projects WHERE slug = ?" if not project_id else "SELECT id FROM projects WHERE slug = ? AND id != ?"
+            if conn.execute(duplicate_sql, params).fetchone():
+                return None, (jsonify({"error": "validation", "message": "رابط المشروع مستخدم بالفعل."}), 409)
+        cleaned["slug"] = slug
+    if "status" in payload:
+        status = str(payload.get("status") or "draft").strip().lower()
+        if status not in {"draft", "published", "archived"}:
+            return None, (jsonify({"error": "validation", "message": "حالة المشروع غير صالحة."}), 400)
+        cleaned["status"] = status
+    for field in ("location", "short_description", "description", "cover_image"):
+        if field in payload:
+            cleaned[field] = str(payload.get(field) or "").strip()
+    if "shortDescription" in payload and "short_description" not in cleaned:
+        cleaned["short_description"] = str(payload.get("shortDescription") or "").strip()
+    if "coverImage" in payload and "cover_image" not in cleaned:
+        cleaned["cover_image"] = str(payload.get("coverImage") or "").strip()
+    int_fields = ("floors_count", "units_count", "units_per_floor", "display_order")
+    aliases = {"floorsCount": "floors_count", "unitsCount": "units_count", "unitsPerFloor": "units_per_floor", "displayOrder": "display_order"}
+    for alias, field in aliases.items():
+        if alias in payload and field not in payload:
+            payload[field] = payload[alias]
+    for field in int_fields:
+        if field not in payload:
+            continue
+        try:
+            value = int(payload.get(field) or 0)
+        except (TypeError, ValueError):
+            return None, (jsonify({"error": "validation", "message": "الأرقام يجب أن تكون صحيحة."}), 400)
+        if value < 0:
+            return None, (jsonify({"error": "validation", "message": "الأرقام لا يمكن أن تكون سالبة."}), 400)
+        cleaned[field] = value
+    if "progress" in payload:
+        try:
+            progress = int(payload.get("progress") or 0)
+        except (TypeError, ValueError):
+            return None, (jsonify({"error": "validation", "message": "نسبة الإنجاز يجب أن تكون رقمًا صحيحًا."}), 400)
+        if progress < 0 or progress > 100:
+            return None, (jsonify({"error": "validation", "message": "نسبة الإنجاز يجب أن تكون بين 0 و 100."}), 400)
+        cleaned["progress"] = progress
+    if "delivery_date" in payload or "deliveryDate" in payload:
+        delivery_date = str(payload.get("delivery_date") or payload.get("deliveryDate") or "").strip()
+        if delivery_date:
+            try:
+                datetime.fromisoformat(delivery_date)
+            except ValueError:
+                return None, (jsonify({"error": "validation", "message": "تاريخ التسليم غير صالح."}), 400)
+        cleaned["delivery_date"] = delivery_date
+    return cleaned, None
+
+
+def project_list_payload(status_filter: str, page: int, limit: int, *, public_only: bool = False) -> dict[str, Any]:
+    offset = (page - 1) * limit
+    if public_only:
+        where_clause = "WHERE status = 'published' AND is_active = TRUE"
+    elif status_filter == "archived":
+        where_clause = "WHERE status = 'archived'"
+    else:
+        where_clause = "WHERE status IN ('published', 'draft')"
+    with db() as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM projects {where_clause}").fetchone()[0]
+        rows = conn.execute(
+            f"""
+            SELECT * FROM projects
+            {where_clause}
+            ORDER BY display_order ASC, created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        ).fetchall()
+        return paginated_payload("projects", [project_payload(row) for row in rows], total, page, limit)
+
+
+@app.get("/api/public/projects")
+def get_public_projects() -> Response:
+    page = request_page()
+    limit = request_limit(default=12, maximum=48)
+    return jsonify(project_list_payload("published", page, limit, public_only=True))
+
+
+@app.get("/api/public/projects/<slug>")
+def get_public_project(slug: str) -> Response:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM projects WHERE slug = ? AND status = 'published' AND is_active = TRUE",
+            (normalize_project_slug(slug),),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "not_found", "message": "المشروع غير متاح حاليًا أو لم يتم نشره بعد."}), 404
+        return jsonify({"project": project_payload(row)})
+
+
+@app.get("/api/admin/projects")
+def get_admin_projects() -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    page = request_page()
+    limit = request_limit(default=20, maximum=100)
+    status_filter = (request.args.get("status") or "active").strip().lower()
+    return jsonify(project_list_payload(status_filter, page, limit))
+
+
+@app.post("/api/admin/projects")
+def create_project() -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    with db() as conn:
+        cleaned, validation_error = validate_project_payload(payload, conn=conn)
+        if validation_error:
+            return validation_error
+        project_id = public_id("project")
+        now = now_iso()
+        conn.execute(
+            """
+            INSERT INTO projects (
+              id, name, slug, location, short_description, description, status, progress,
+              delivery_date, floors_count, units_count, units_per_floor, cover_image,
+              is_active, display_order, created_by, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                cleaned["name"],
+                cleaned["slug"],
+                cleaned.get("location"),
+                cleaned.get("short_description"),
+                cleaned.get("description"),
+                cleaned.get("status", "draft"),
+                cleaned.get("progress", 0),
+                cleaned.get("delivery_date"),
+                cleaned.get("floors_count", 0),
+                cleaned.get("units_count", 0),
+                cleaned.get("units_per_floor", 0),
+                cleaned.get("cover_image"),
+                cleaned.get("display_order", 0),
+                admin["id"],
+                now,
+                now,
+            ),
+        )
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        audit(conn, admin["id"], "create", "project", project_id, f"تم إضافة مشروع: {cleaned['name']}", None, project_payload(row))
+        return jsonify({"project": project_payload(row), "message": "تم حفظ المشروع بنجاح"}), 201
+
+
+@app.patch("/api/admin/projects/<project_id>")
+def update_project(project_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    with db() as conn:
+        existing = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if not existing:
+            return jsonify({"error": "not_found", "message": "المشروع غير موجود."}), 404
+        cleaned, validation_error = validate_project_payload(payload, partial=True, conn=conn, project_id=project_id)
+        if validation_error:
+            return validation_error
+        if cleaned:
+            update_fields = [f"{field} = ?" for field in cleaned]
+            update_values = list(cleaned.values())
+            update_values.extend([now_iso(), project_id])
+            conn.execute(f"UPDATE projects SET {', '.join(update_fields)}, updated_at = ? WHERE id = ?", update_values)
+            row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+            audit(conn, admin["id"], "update", "project", project_id, f"تم تعديل مشروع: {row['name']}", project_payload(existing), project_payload(row))
+        else:
+            row = existing
+        return jsonify({"project": project_payload(row), "message": "تم حفظ المشروع بنجاح"})
+
+
+def update_project_status(project_id: str, status: str, action_type: str, description: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    with db() as conn:
+        existing = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if not existing:
+            return jsonify({"error": "not_found", "message": "المشروع غير موجود."}), 404
+        conn.execute(
+            "UPDATE projects SET status = ?, is_active = ?, updated_at = ? WHERE id = ?",
+            (status, status == "published", now_iso(), project_id),
+        )
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        audit(conn, admin["id"], action_type, "project", project_id, description, project_payload(existing), project_payload(row))
+        return jsonify({"project": project_payload(row), "message": "تم حفظ المشروع بنجاح"})
+
+
+@app.post("/api/admin/projects/<project_id>/publish")
+def publish_project(project_id: str) -> Response:
+    return update_project_status(project_id, "published", "publish", "تم نشر مشروع")
+
+
+@app.post("/api/admin/projects/<project_id>/unpublish")
+def unpublish_project(project_id: str) -> Response:
+    return update_project_status(project_id, "draft", "unpublish", "تم إخفاء مشروع")
+
+
+@app.post("/api/admin/projects/<project_id>/archive")
+def archive_project(project_id: str) -> Response:
+    return update_project_status(project_id, "archived", "archive", "تم أرشفة مشروع")
+
+
+# Partnerships API Endpoints
+def partnership_payload(row: Any) -> dict[str, Any]:
+    payload = dict(row)
+    if "project_name" in payload:
+        payload["projectName"] = normalize_display_text(payload.get("project_name"))
+    if "project_slug" in payload:
+        payload["projectSlug"] = payload.get("project_slug")
+    return payload
+
+
+def partnership_list_payload(status_filter: str, page: int, limit: int, *, public_only: bool = False, project_slug: str | None = None) -> dict[str, Any]:
+    offset = (page - 1) * limit
+    project_filter = ""
+    params: tuple[Any, ...] = ()
+    if public_only:
+        where_clause = "WHERE partnerships.status = 'published'"
+    elif status_filter == "archived":
+        where_clause = "WHERE partnerships.status = 'archived'"
+    else:
+        where_clause = "WHERE partnerships.status IN ('published', 'draft')"
+    with db() as conn:
+        if project_slug:
+            project_id = project_id_for_slug(conn, project_slug)
+            if not project_id:
+                return paginated_payload("partnerships", [], 0, page, limit)
+            if normalize_project_slug(project_slug) == DEFAULT_PROJECT_SLUG:
+                project_filter = " AND (partnerships.project_id = ? OR partnerships.project_id IS NULL)"
+            else:
+                project_filter = " AND partnerships.project_id = ?"
+            params = (project_id,)
+        total = conn.execute(f"SELECT COUNT(*) FROM partnerships {where_clause}{project_filter}", params).fetchone()[0]
+        rows = conn.execute(
+            f"""
+            SELECT partnerships.*, projects.name AS project_name, projects.slug AS project_slug
+            FROM partnerships
+            LEFT JOIN projects ON projects.id = partnerships.project_id
+            {where_clause}{project_filter}
+            ORDER BY partnerships.display_order ASC, partnerships.created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (*params, limit, offset),
+        ).fetchall()
+        return paginated_payload("partnerships", [partnership_payload(row) for row in rows], total, page, limit)
+
+
+def validate_partnership_payload(payload: dict[str, Any], *, partial: bool = False) -> Response | None:
+    required = ("partner_name", "title")
+    if not partial:
+        for field in required:
+            if not str(payload.get(field) or "").strip():
+                return jsonify({"error": "validation", "message": f"هذا الحقل مطلوب: {field}"}), 400
+    if "status" in payload and payload.get("status") not in {"draft", "published", "archived"}:
+        return jsonify({"error": "validation", "message": "حالة الشراكة غير صالحة."}), 400
+    return None
+
+
+@app.get("/api/public/partnerships")
+def get_public_partnerships() -> Response:
+    page = request_page()
+    limit = request_limit(default=3, maximum=24)
+    project_slug = request.args.get("project_slug") or request.args.get("project")
+    return jsonify(partnership_list_payload("published", page, limit, public_only=True, project_slug=project_slug))
+
+
+@app.get("/api/admin/partnerships")
+def get_admin_partnerships() -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    page = request_page()
+    limit = request_limit(default=20, maximum=100)
+    status_filter = (request.args.get("status") or "active").strip().lower()
+    return jsonify(partnership_list_payload(status_filter, page, limit))
+
+
+@app.post("/api/admin/partnerships")
+def create_partnership() -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    validation_error = validate_partnership_payload(payload)
+    if validation_error:
+        return validation_error
+    partnership_id = public_id("partnership")
+    now = now_iso()
+    new_payload = {
+        "id": partnership_id,
+        "partner_name": str(payload.get("partner_name") or "").strip(),
+        "title": str(payload.get("title") or "").strip(),
+        "short_description": str(payload.get("short_description") or "").strip(),
+        "description": str(payload.get("description") or "").strip(),
+        "image_url": str(payload.get("image_url") or "").strip(),
+        "link_url": str(payload.get("link_url") or "").strip(),
+        "project_id": str(payload.get("project_id") or payload.get("projectId") or "").strip() or None,
+        "status": payload.get("status") or "draft",
+        "display_order": int(payload.get("display_order") or 0),
+    }
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO partnerships (
+              id, partner_name, title, short_description, description, image_url, link_url,
+              project_id, status, display_order, created_by, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                partnership_id,
+                new_payload["partner_name"],
+                new_payload["title"],
+                new_payload["short_description"],
+                new_payload["description"],
+                new_payload["image_url"],
+                new_payload["link_url"],
+                new_payload["project_id"],
+                new_payload["status"],
+                new_payload["display_order"],
+                admin["id"],
+                now,
+                now,
+            ),
+        )
+        audit(conn, admin["id"], "create", "partnership", partnership_id, f"تم إضافة شراكة: {new_payload['partner_name']}", None, new_payload)
+    return jsonify({"id": partnership_id, "message": "تم حفظ الشراكة بنجاح"})
+
+
+@app.patch("/api/admin/partnerships/<partnership_id>")
+def update_partnership(partnership_id: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    payload = request.get_json(silent=True) or {}
+    validation_error = validate_partnership_payload(payload, partial=True)
+    if validation_error:
+        return validation_error
+    allowed_fields = {
+        "partner_name",
+        "title",
+        "short_description",
+        "description",
+        "image_url",
+        "link_url",
+        "project_id",
+        "status",
+        "display_order",
+    }
+    update_fields = []
+    update_values = []
+    for field in allowed_fields:
+        if field not in payload:
+            continue
+        update_fields.append(f"{field} = ?")
+        if field == "display_order":
+            update_values.append(int(payload.get(field) or 0))
+        else:
+            update_values.append(str(payload.get(field) or "").strip())
+    with db() as conn:
+        existing = conn.execute("SELECT * FROM partnerships WHERE id = ?", (partnership_id,)).fetchone()
+        if not existing:
+            return jsonify({"error": "not_found", "message": "الشراكة غير موجودة."}), 404
+        if update_fields:
+            update_values.extend([now_iso(), partnership_id])
+            conn.execute(
+                f"UPDATE partnerships SET {', '.join(update_fields)}, updated_at = ? WHERE id = ?",
+                update_values,
+            )
+            audit(conn, admin["id"], "update", "partnership", partnership_id, f"تم تعديل شراكة: {payload.get('partner_name') or existing['partner_name']}", dict(existing), payload)
+    return jsonify({"message": "تم حفظ الشراكة بنجاح"})
+
+
+def update_partnership_status(partnership_id: str, target_status: str, action_type: str, description: str) -> Response:
+    admin = require_admin({"owner", "admin"})
+    if not isinstance(admin, dict):
+        return admin
+    with db() as conn:
+        existing = conn.execute("SELECT * FROM partnerships WHERE id = ?", (partnership_id,)).fetchone()
+        if not existing:
+            return jsonify({"error": "not_found", "message": "الشراكة غير موجودة."}), 404
+        conn.execute("UPDATE partnerships SET status = ?, updated_at = ? WHERE id = ?", (target_status, now_iso(), partnership_id))
+        audit(conn, admin["id"], action_type, "partnership", partnership_id, description, dict(existing), {"status": target_status})
+    return jsonify({"message": "تم حفظ الشراكة بنجاح"})
+
+
+@app.post("/api/admin/partnerships/<partnership_id>/publish")
+def publish_partnership(partnership_id: str) -> Response:
+    return update_partnership_status(partnership_id, "published", "publish", "تم نشر شراكة")
+
+
+@app.post("/api/admin/partnerships/<partnership_id>/unpublish")
+def unpublish_partnership(partnership_id: str) -> Response:
+    return update_partnership_status(partnership_id, "draft", "unpublish", "تم إخفاء شراكة")
+
+
+@app.post("/api/admin/partnerships/<partnership_id>/archive")
+def archive_partnership(partnership_id: str) -> Response:
+    return update_partnership_status(partnership_id, "archived", "archive", "تم أرشفة شراكة")
+
+
 # Project Updates API Endpoints
+def public_project_updates_payload(page: int, limit: int, project_slug: str | None = None) -> dict[str, Any]:
+    offset = (page - 1) * limit
+    with db() as conn:
+        project_filter = ""
+        params: tuple[Any, ...] = ()
+        if project_slug:
+            project_id = project_id_for_slug(conn, project_slug)
+            if not project_id:
+                return paginated_payload("updates", [], 0, page, limit)
+            if normalize_project_slug(project_slug) == DEFAULT_PROJECT_SLUG:
+                project_filter = " AND (project_updates.project_id = ? OR project_updates.project_id IS NULL)"
+            else:
+                project_filter = " AND project_updates.project_id = ?"
+            params = (project_id,)
+        total = conn.execute(f"SELECT COUNT(*) FROM project_updates WHERE status = 'published'{project_filter}", params).fetchone()[0]
+        updates = conn.execute(
+            f"""
+            SELECT project_updates.id, project_updates.title, project_updates.description, project_updates.update_date,
+                   project_updates.stage, project_updates.media_type, project_updates.media_url, project_updates.thumbnail_url,
+                   project_updates.project_id, projects.name AS project_name, projects.slug AS project_slug
+            FROM project_updates
+            LEFT JOIN projects ON projects.id = project_updates.project_id
+            WHERE project_updates.status = 'published'{project_filter}
+            ORDER BY update_date DESC, project_updates.created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (*params, limit, offset),
+        ).fetchall()
+        return paginated_payload("updates", [project_update_payload(update) for update in updates], total, page, limit)
+
+
+@app.get("/api/public/project-updates")
+def get_public_project_updates() -> Response:
+    """Paginated published project updates for public pages."""
+    page = request_page()
+    limit = request_limit(default=3, maximum=24)
+    project_slug = request.args.get("project_slug") or request.args.get("project")
+    return jsonify(public_project_updates_payload(page, limit, project_slug=project_slug))
+
+
 @app.get("/api/project-updates/published")
 def get_published_updates() -> Response:
     """Get all published project updates for public display"""
-    def load_published_updates() -> list[dict[str, Any]]:
-        with db() as conn:
-            updates = conn.execute(
-                """
-                SELECT id, title, description, update_date, stage, media_type, media_url, thumbnail_url
-                FROM project_updates
-                WHERE status = 'published'
-                ORDER BY display_order ASC, update_date DESC
-                """
-            ).fetchall()
-            return [project_update_payload(update) for update in updates]
-
-    return cached_public_json("published_updates", load_published_updates)
+    limit = request_limit(default=100, maximum=100)
+    page = request_page()
+    project_slug = request.args.get("project_slug") or request.args.get("project")
+    return jsonify(public_project_updates_payload(page, limit, project_slug=project_slug)["updates"])
 
 
 @app.get("/api/admin/project-updates")
@@ -4562,9 +5320,10 @@ def get_all_project_updates() -> Response:
         total = conn.execute(f"SELECT COUNT(*) FROM project_updates {count_where_clause}").fetchone()[0]
         updates = conn.execute(
             f"""
-            SELECT pu.*, a.full_name as created_by_name
+            SELECT pu.*, a.full_name as created_by_name, p.name AS project_name, p.slug AS project_slug
             FROM project_updates pu
             LEFT JOIN admins a ON pu.created_by = a.id
+            LEFT JOIN projects p ON p.id = pu.project_id
             {where_clause}
             ORDER BY pu.display_order ASC, pu.update_date DESC
             LIMIT ? OFFSET ?
@@ -4605,12 +5364,17 @@ def create_project_update() -> Response:
             return jsonify({"error": "validation", "message": "نوع الوسائط لا يطابق الصورة المرفوعة."}), 400
     
     with db() as conn:
+        project_id = str(payload.get("project_id") or payload.get("projectId") or "").strip()
+        if not project_id:
+            project_id = default_project_id(conn)
+        elif not conn.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone():
+            return jsonify({"error": "validation", "message": "المشروع المحدد غير موجود."}), 400
         update_id = public_id('UPD')
         conn.execute(
             """
             INSERT INTO project_updates 
-            (id, title, description, update_date, stage, media_type, media_url, thumbnail_url, status, display_order, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, title, description, update_date, stage, media_type, media_url, thumbnail_url, status, display_order, project_id, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 update_id,
@@ -4623,6 +5387,7 @@ def create_project_update() -> Response:
                 payload.get('thumbnail_url'),
                 payload.get('status', 'draft'),
                 payload.get('display_order', 0),
+                project_id,
                 admin['id'],
                 now_iso(),
                 now_iso()
@@ -4636,11 +5401,30 @@ def create_project_update() -> Response:
 @app.patch("/api/admin/project-updates/<update_id>")
 def update_project_update(update_id: str) -> Response:
     """Update an existing project update"""
-    admin = require_admin()
+    admin = require_admin({"owner", "admin"})
     if not isinstance(admin, dict):
         return admin
     
     payload = request.get_json(silent=True) or {}
+    if "date" in payload and "update_date" not in payload:
+        payload["update_date"] = payload["date"]
+    if "projectId" in payload and "project_id" not in payload:
+        payload["project_id"] = payload["projectId"]
+    valid_stages = ['foundation', 'concrete', 'walls', 'finishing', 'exterior', 'delivery', 'general']
+    if "stage" in payload and payload.get("stage") not in valid_stages:
+        return jsonify({"error": "validation", "message": "تصنيف المنشور غير صالح."}), 400
+    if "status" in payload and payload.get("status") not in {"draft", "published", "archived"}:
+        return jsonify({"error": "validation", "message": "حالة المنشور غير صالحة."}), 400
+    if "media_type" in payload and payload.get("media_type") not in {"image", "video"}:
+        return jsonify({"error": "validation", "message": "نوع الوسائط غير صالح."}), 400
+    media_url = payload.get("media_url")
+    media_type = payload.get("media_type")
+    if media_url and media_type:
+        inferred_mime_type = project_update_mime_type(media_url, fallback=payload.get("mimeType"))
+        if media_type == "video" and not inferred_mime_type.startswith("video/"):
+            return jsonify({"error": "validation", "message": "نوع الوسائط لا يطابق ملف الفيديو."}), 400
+        if media_type == "image" and not inferred_mime_type.startswith("image/"):
+            return jsonify({"error": "validation", "message": "نوع الوسائط لا يطابق الصورة."}), 400
     
     with db() as conn:
         # Check if update exists
@@ -4648,11 +5432,17 @@ def update_project_update(update_id: str) -> Response:
         if not existing:
             return jsonify({"error": "التحديث غير موجود"}), 404
         
+        if "project_id" in payload:
+            project_id_value = str(payload.get("project_id") or "").strip()
+            if project_id_value and not conn.execute("SELECT id FROM projects WHERE id = ?", (project_id_value,)).fetchone():
+                return jsonify({"error": "validation", "message": "المشروع المحدد غير موجود."}), 400
+            payload["project_id"] = project_id_value or None
+
         # Update fields
         update_fields = []
         update_values = []
         
-        for field in ['title', 'description', 'update_date', 'stage', 'media_type', 'media_url', 'thumbnail_url', 'status', 'display_order']:
+        for field in ['title', 'description', 'update_date', 'stage', 'media_type', 'media_url', 'thumbnail_url', 'status', 'display_order', 'project_id']:
             if field in payload:
                 update_fields.append(f"{field} = ?")
                 update_values.append(payload[field])
@@ -4680,21 +5470,22 @@ def delete_project_update(update_id: str) -> Response:
 
     with db() as conn:
         # Check if update exists
-        existing = conn.execute("SELECT * FROM project_updates WHERE id = %s", (update_id,)).fetchone()
+        existing = conn.execute("SELECT * FROM project_updates WHERE id = ?", (update_id,)).fetchone()
         if not existing:
             return jsonify({"error": "التحديث غير موجود"}), 404
 
         # Archive instead of hard delete
         conn.execute(
-            "UPDATE project_updates SET status = 'archived', updated_at = %s WHERE id = %s",
+            "UPDATE project_updates SET status = 'archived', updated_at = ? WHERE id = ?",
             (now_iso(), update_id)
         )
 
         description = f"تم أرشفة تحديث: {existing['title']}"
         if reason:
             description += f" (السبب: {reason})"
+        existing_payload = dict(existing)
         audit(conn, admin['id'], 'archive', 'project_update', update_id, description,
-              {"old_status": existing.get("status")},
+              {"old_status": existing_payload.get("status")},
               {"new_status": "archived", "reason": reason})
 
         return jsonify({"message": "تم إزالة المنشور بنجاح"})
