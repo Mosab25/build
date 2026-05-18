@@ -78,6 +78,17 @@ python scripts/prepare_production.py
 gunicorn -c gunicorn.conf.py app.main:app
 ```
 
+## Render Keep-Alive
+
+Free Render services can sleep after inactivity. To reduce cold starts, create a monitor in UptimeRobot, Cron-job, or a similar ping service:
+
+- Monitor type: HTTP(s)
+- URL: `https://real-estate-system-210.onrender.com/health`
+- Interval: every 10 minutes
+- Expected status: `200 OK`
+
+The `/health` endpoint is public and intentionally lightweight. If you only need a plain text response, `/ping` is also available and returns `ok`.
+
 ## Docker
 
 This repository currently uses Docker Compose for the PostgreSQL service:
