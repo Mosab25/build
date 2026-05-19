@@ -738,7 +738,7 @@ function openProjectForm(project = null) {
       <div class="form-field"><label for="projectUnitsPerFloor">الوحدات في كل دور</label><input id="projectUnitsPerFloor" type="number" min="0" step="1" /></div>
       <div class="form-field"><label for="projectDisplayOrder">ترتيب العرض</label><input id="projectDisplayOrder" type="number" step="1" /></div>
       <div class="form-field full"><label for="projectCoverImage">صورة الغلاف</label><input id="projectCoverImage" placeholder="media/optimized/facade.webp" /></div>
-      <div class="empty-state full"><strong>محتوى صفحة عرض المشروع</strong><br><span>هذه الحقول تتحكم في النصوص والأزرار داخل صفحة تفاصيل المشروع العامة.</span></div>
+      <div class="empty-state full"><strong>عناصر داخل صفحة المشروع</strong><br><span>هذه الاختيارات تخفي أو تظهر أقسامًا داخل صفحة عرض المشروع فقط، ولا تخفي المشروع نفسه من الموقع.</span></div>
       <label class="settings-check"><input id="projectDetailShowUnits" type="checkbox" /> <span>إظهار قسم الوحدات والمساحات</span></label>
       <label class="settings-check"><input id="projectDetailShowGallery" type="checkbox" /> <span>إظهار قسم معرض الصور والفيديو</span></label>
       <label class="settings-check"><input id="projectDetailShowUpdates" type="checkbox" /> <span>إظهار قسم تحديثات المشروع</span></label>
