@@ -3482,7 +3482,10 @@ def get_settings() -> Response:
     admin = require_admin()
     if not isinstance(admin, dict):
         return admin
-    return jsonify({"settings": all_settings()})
+    with db() as conn:
+        settings = all_settings(conn)
+        settings["homepageContent"] = setting_json(conn, "homepage_content", {})
+        return jsonify({"settings": settings})
 
 
 @app.patch("/api/admin/settings")
@@ -3496,12 +3499,17 @@ def update_settings() -> Response:
         old = all_settings(conn)
         for key, value in payload.items():
             if key in allowed:
-                conn.execute(
-                    "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-                    (key, str(value), now_iso()),
-                )
+                upsert_setting(conn, key, value)
+        if isinstance(payload.get("homepageContent"), dict):
+            homepage_content = setting_json(conn, "homepage_content", {})
+            homepage_content.update(sanitize_homepage_content(payload["homepageContent"]))
+            upsert_setting(conn, "homepage_content", homepage_content)
         audit(conn, admin["id"], "update", "settings", "settings", "تم تعديل إعدادات النظام", old, payload)
-        return jsonify({"settings": all_settings(conn)})
+        with public_cache_lock:
+            public_response_cache.clear()
+        settings = all_settings(conn)
+        settings["homepageContent"] = setting_json(conn, "homepage_content", {})
+        return jsonify({"settings": settings})
 
 
 @app.get("/api/admin/profile")

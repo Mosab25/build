@@ -1,5 +1,6 @@
 function renderSettingsPanel() {
   const settings = APP_STATE.dashboard.settings || {};
+  const homepage = settings.homepageContent || {};
   const profile = APP_STATE.session || {};
   return `
     <section class="data-panel">
@@ -14,6 +15,23 @@ function renderSettingsPanel() {
         <div class="form-field full"><label for="officeAddress">العنوان</label><textarea id="officeAddress">${escapeHTML(settings.office_address || "")}</textarea></div>
         <div class="form-field full"><label for="statementFooter">نص أسفل الإيصال</label><textarea id="statementFooter">${escapeHTML(settings.statement_footer || "")}</textarea></div>
         <button class="btn primary full" type="submit">حفظ الإعدادات</button>
+      </form>
+    </section>
+    <section class="data-panel">
+      <span class="eyebrow">الصفحة الرئيسية</span>
+      <h3>تعديل أقسام عن بنيان وبيانات المشروع والمعرض</h3>
+      <form id="homepageSectionsForm" class="form-grid">
+        <div class="form-field"><label for="aboutEyebrow">عن بنيان - العنوان الصغير</label><input id="aboutEyebrow" value="${escapeHTML(homepage.about_eyebrow || "عن بنيان")}" /></div>
+        <div class="form-field"><label for="aboutTitle">عن بنيان - العنوان</label><input id="aboutTitle" value="${escapeHTML(homepage.about_title || "Bonyan Developments")}" /></div>
+        <div class="form-field full"><label for="aboutText">عن بنيان - النص</label><textarea id="aboutText">${escapeHTML(homepage.about_text || "بنيان للتطوير العقاري تعمل على تطوير وإدارة مشاريع عقارية بمنهج منظم يركز على جودة التنفيذ، وضوح البيانات، ومتابعة العملاء في كل مرحلة من مراحل المشروع.")}</textarea></div>
+
+        <div class="form-field"><label for="overviewEyebrow">بيانات المشروع - العنوان الصغير</label><input id="overviewEyebrow" value="${escapeHTML(homepage.overview_eyebrow || "بيانات المشروع")}" /></div>
+        <div class="form-field"><label for="overviewTitle">بيانات المشروع - العنوان</label><input id="overviewTitle" value="${escapeHTML(homepage.overview_title || "نظرة تشغيلية على حالة الوحدات")}" /></div>
+        <div class="form-field full"><label for="overviewText">بيانات المشروع - الوصف</label><textarea id="overviewText">${escapeHTML(homepage.overview_text || "تعرض هذه المؤشرات بيانات فعلية من قاعدة النظام، ويتم تحديثها عند إضافة الحجوزات والمدفوعات من لوحة الإدارة.")}</textarea></div>
+
+        <div class="form-field"><label for="galleryEyebrow">المعرض - العنوان الصغير</label><input id="galleryEyebrow" value="${escapeHTML(homepage.gallery_eyebrow || "المعرض")}" /></div>
+        <div class="form-field"><label for="galleryTitle">المعرض - العنوان</label><input id="galleryTitle" value="${escapeHTML(homepage.gallery_title || "صور المشروع والرسومات المعتمدة")}" /></div>
+        <button class="btn primary full" type="submit">حفظ أقسام الصفحة الرئيسية</button>
       </form>
     </section>
     <section class="data-panel">
@@ -95,6 +113,35 @@ function bindSettingsForm() {
         await refreshDashboardKeys(["settings"], { loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الإعدادات..." });
       } catch (error) {
         showToast(error.message, "error");
+      }
+    });
+  }
+
+  const homepageSectionsForm = qs("#homepageSectionsForm");
+  if (homepageSectionsForm) {
+    homepageSectionsForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = qs("#homepageSectionsForm button[type='submit']");
+      setButtonLoading(button, true, "جاري الحفظ...");
+      try {
+        await AdminAPI.updateSettings({
+          homepageContent: {
+            about_eyebrow: qs("#aboutEyebrow").value.trim(),
+            about_title: qs("#aboutTitle").value.trim(),
+            about_text: qs("#aboutText").value.trim(),
+            overview_eyebrow: qs("#overviewEyebrow").value.trim(),
+            overview_title: qs("#overviewTitle").value.trim(),
+            overview_text: qs("#overviewText").value.trim(),
+            gallery_eyebrow: qs("#galleryEyebrow").value.trim(),
+            gallery_title: qs("#galleryTitle").value.trim(),
+          },
+        });
+        showToast("تم حفظ أقسام الصفحة الرئيسية بنجاح.", "success");
+        await refreshDashboardKeys(["settings"], { loadingSelector: "#dashboardContent .data-panel", loadingText: "جاري تحديث الإعدادات..." });
+      } catch (error) {
+        showToast(error.message, "error");
+      } finally {
+        setButtonLoading(button, false);
       }
     });
   }
