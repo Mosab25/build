@@ -5597,7 +5597,25 @@ def upload_project_update_media() -> Response:
         audit(conn, admin["id"], "upload", "project_update_media", None, f"تم رفع ملف {media_type}", None, {"url": file_url, "provider": provider})
     return jsonify({"url": file_url, "mediaType": media_type, "mimeType": mime_type, "provider": provider, "message": "تم رفع الملف بنجاح"})
 
+_runtime_bootstrap_lock = threading.Lock()
+_runtime_bootstrapped = False
+
+
+def ensure_runtime_bootstrapped() -> None:
+    """Run idempotent schema/setup work when the app is loaded by Gunicorn."""
+    global _runtime_bootstrapped
+    if _runtime_bootstrapped:
+        return
+    with _runtime_bootstrap_lock:
+        if _runtime_bootstrapped:
+            return
+        bootstrap_runtime()
+        _runtime_bootstrapped = True
+
+
+ensure_runtime_bootstrapped()
+
+
 if __name__ == "__main__":
-    bootstrap_runtime()
     app.run(host="127.0.0.1", port=8000, debug=False)
 
