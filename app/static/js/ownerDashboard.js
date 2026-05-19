@@ -14,6 +14,7 @@ const OWNER_OPERATION_TABS = [
 
 const OWNER_SETTINGS_TABS = [
   ["office", "بيانات المكتب"],
+  ["homepage", "الصفحة الرئيسية"],
   ["pricing", "إعدادات الأسعار"],
   ["permissions", "إعدادات الصلاحيات"],
   ["accounts", "إدارة الحسابات"],
@@ -976,7 +977,80 @@ function renderOwnerSettingsTab() {
   if (tab === "accounts") return renderAccountsSettings();
   if (tab === "system") return renderSystemSettings(settings.systemSettings || {});
   if (tab === "media") return renderMediaSettings(settings.mediaSettings || {});
+  if (tab === "homepage") return renderHomepageSettings(settings.homepageContent || {});
   return renderOfficeSettings(settings.office || {});
+}
+
+function homeSetting(settings, key, fallback = "") {
+  return settings[key] ?? fallback;
+}
+
+function homeSettingChecked(settings, key, fallback = true) {
+  return settings[key] === undefined ? fallback : Boolean(settings[key]);
+}
+
+function renderHomepageSettings(settings) {
+  return settingsForm("homepageContent", `
+    <div class="empty-state full"><strong>محتوى الصفحة الرئيسية</strong><br><span>عدّل النصوص والروابط والصور الأساسية التي تظهر في واجهة الموقع بدون تعديل الكود.</span></div>
+    ${settingsCheckbox("إظهار قسم عن بنيان", "show_about", homeSettingChecked(settings, "show_about"))}
+    ${settingsCheckbox("إظهار بيانات المشروع", "show_overview", homeSettingChecked(settings, "show_overview"))}
+    ${settingsCheckbox("إظهار الشراكات", "show_partnerships", homeSettingChecked(settings, "show_partnerships"))}
+    ${settingsCheckbox("إظهار المعرض", "show_gallery", homeSettingChecked(settings, "show_gallery"))}
+    ${settingsCheckbox("إظهار التحديثات", "show_updates", homeSettingChecked(settings, "show_updates"))}
+    ${settingsCheckbox("إظهار بوابة العملاء", "show_client_portal", homeSettingChecked(settings, "show_client_portal"))}
+    ${settingsCheckbox("إظهار التواصل", "show_contact", homeSettingChecked(settings, "show_contact"))}
+    ${settingsCheckbox("إظهار عداد التسليم", "show_countdown", homeSettingChecked(settings, "show_countdown"))}
+
+    ${settingsInput("Hero eyebrow", "hero_eyebrow", homeSetting(settings, "hero_eyebrow", "Bonyan Developments"))}
+    ${settingsInput("عنوان الهيرو", "hero_title", homeSetting(settings, "hero_title", "بنيان للتطوير العقاري"))}
+    ${settingsTextarea("وصف الهيرو", "hero_copy", homeSetting(settings, "hero_copy", "نطوّر مشاريع عقارية برؤية حديثة تجمع بين جودة التنفيذ، وضوح المتابعة، والثقة في كل مرحلة."))}
+    ${settingsInput("صورة الهيرو", "hero_image", homeSetting(settings, "hero_image", "media/optimized/facade.webp"), "full")}
+    ${settingsInput("نص رابط الهيرو", "hero_overview_link_label", homeSetting(settings, "hero_overview_link_label", "تصفح مشاريع بنيان"))}
+    ${settingsInput("رابط الهيرو", "hero_overview_link_url", homeSetting(settings, "hero_overview_link_url", "#/projects"))}
+    ${settingsInput("زر الهيرو الأول", "hero_primary_label", homeSetting(settings, "hero_primary_label", "تصفح مشاريعنا"))}
+    ${settingsInput("رابط زر الهيرو الأول", "hero_primary_url", homeSetting(settings, "hero_primary_url", "#/projects"))}
+    ${settingsInput("زر الهيرو الثاني", "hero_secondary_label", homeSetting(settings, "hero_secondary_label", "دخول بوابة العملاء"))}
+    ${settingsInput("رابط زر الهيرو الثاني", "hero_secondary_url", homeSetting(settings, "hero_secondary_url", "#client-access"))}
+
+    ${settingsInput("عن بنيان - العنوان الصغير", "about_eyebrow", homeSetting(settings, "about_eyebrow", "عن بنيان"))}
+    ${settingsInput("عن بنيان - العنوان", "about_title", homeSetting(settings, "about_title", "Bonyan Developments"))}
+    ${settingsTextarea("عن بنيان - النص", "about_text", homeSetting(settings, "about_text", "بنيان للتطوير العقاري تعمل على تطوير وإدارة مشاريع عقارية بمنهج منظم يركز على جودة التنفيذ، وضوح البيانات، ومتابعة العملاء في كل مرحلة من مراحل المشروع."))}
+
+    ${settingsInput("بيانات المشروع - العنوان الصغير", "overview_eyebrow", homeSetting(settings, "overview_eyebrow", "بيانات المشروع"))}
+    ${settingsInput("بيانات المشروع - العنوان", "overview_title", homeSetting(settings, "overview_title", "نظرة تشغيلية على حالة الوحدات"))}
+    ${settingsTextarea("بيانات المشروع - الوصف", "overview_text", homeSetting(settings, "overview_text", "تعرض هذه المؤشرات بيانات فعلية من قاعدة النظام، ويتم تحديثها عند إضافة الحجوزات والمدفوعات من لوحة الإدارة."))}
+
+    ${settingsInput("الشراكات - Badge", "partnership_badge", homeSetting(settings, "partnership_badge", "شراكة استراتيجية"))}
+    ${settingsInput("الشراكات - العنوان الصغير", "partnership_eyebrow", homeSetting(settings, "partnership_eyebrow", "شراكة تطوير وتنفيذ"))}
+    ${settingsInput("الشراكات - العنوان", "partnership_title", homeSetting(settings, "partnership_title", "Bonyan Developments لمشروع عقاري في أرض عبدالجليل"))}
+    ${settingsTextarea("الشراكات - الوصف المختصر", "partnership_subtitle", homeSetting(settings, "partnership_subtitle", "شراكة تطوير وتنفيذ تعزز جودة المشروع وتدعم تجربة العملاء."))}
+    ${settingsTextarea("الشراكات - النص", "partnership_text", homeSetting(settings, "partnership_text", "نعمل من خلال هذه الشراكة على تقديم نموذج أكثر تنظيمًا واحترافية في متابعة المشروع، بداية من مراحل التنفيذ وحتى تسليم الوحدات، مع التركيز على الجودة، الوضوح، والالتزام في كل خطوة."))}
+    ${settingsInput("الشراكات - الصورة", "partnership_image", homeSetting(settings, "partnership_image", "media/partnership-bonyan-abdeljalil.png"), "full")}
+    ${settingsInput("الشراكات - زر التفاصيل", "partnership_primary_label", homeSetting(settings, "partnership_primary_label", "عرض تفاصيل المشروع"))}
+    ${settingsInput("الشراكات - رابط التفاصيل", "partnership_primary_url", homeSetting(settings, "partnership_primary_url", "#overview"))}
+    ${settingsInput("الشراكات - زر التواصل", "partnership_secondary_label", homeSetting(settings, "partnership_secondary_label", "تواصل معنا"))}
+    ${settingsInput("الشراكات - رابط التواصل", "partnership_secondary_url", homeSetting(settings, "partnership_secondary_url", "#contact"))}
+
+    ${settingsInput("المعرض - العنوان الصغير", "gallery_eyebrow", homeSetting(settings, "gallery_eyebrow", "المعرض"))}
+    ${settingsInput("المعرض - العنوان", "gallery_title", homeSetting(settings, "gallery_title", "صور المشروع والرسومات المعتمدة"))}
+
+    ${settingsInput("التحديثات - العنوان الصغير", "updates_eyebrow", homeSetting(settings, "updates_eyebrow", "آخر التحديثات"))}
+    ${settingsInput("التحديثات - العنوان", "updates_title", homeSetting(settings, "updates_title", "تحديثات منشورة من الإدارة"))}
+    ${settingsTextarea("التحديثات - الوصف", "updates_text", homeSetting(settings, "updates_text", "تحديثات منشورة من الإدارة حول مراحل تنفيذ المشروع."))}
+    ${settingsInput("التحديثات - زر عرض الكل", "updates_all_label", homeSetting(settings, "updates_all_label", "عرض كل التحديثات"))}
+
+    ${settingsInput("بوابة العملاء - العنوان الصغير", "portal_eyebrow", homeSetting(settings, "portal_eyebrow", "بوابة عملاء بنيان"))}
+    ${settingsInput("بوابة العملاء - العنوان", "portal_title", homeSetting(settings, "portal_title", "كل بيانات حجزك في مكان واحد"))}
+    ${settingsTextarea("بوابة العملاء - الوصف", "portal_text", homeSetting(settings, "portal_text", "أدخل كود الحجز لمتابعة مشروعك، وحدتك، المدفوعات، والمتبقي من خلال بوابة عملاء بنيان."))}
+    ${settingsInput("بوابة العملاء - زر الدخول", "portal_button_label", homeSetting(settings, "portal_button_label", "دخول بوابة العملاء"))}
+
+    ${settingsInput("التواصل - العنوان الصغير", "contact_eyebrow", homeSetting(settings, "contact_eyebrow", "تواصل معنا"))}
+    ${settingsInput("التواصل - العنوان", "contact_title", homeSetting(settings, "contact_title", "فريق المكتب جاهز لمراجعة بيانات الحجز"))}
+    ${settingsTextarea("التواصل - النص", "contact_text", homeSetting(settings, "contact_text", "يمكنك التواصل مع المكتب مباشرة للاستفسار عن الوحدة أو السداد أو مواعيد التسليم."))}
+    ${settingsInput("التواصل - زر واتساب", "whatsapp_label", homeSetting(settings, "whatsapp_label", "التواصل عبر واتساب"))}
+    ${settingsTextarea("رسالة واتساب الافتراضية", "whatsapp_message", homeSetting(settings, "whatsapp_message", "مرحبًا، أريد الاستفسار عن مشاريع بنيان للتطوير العقاري."))}
+    ${settingsInput("التواصل - زر الهاتف", "phone_label", homeSetting(settings, "phone_label", "اتصال مباشر"))}
+  `, "حفظ محتوى الصفحة الرئيسية");
 }
 
 function renderOfficeSettings(office) {

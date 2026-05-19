@@ -44,13 +44,15 @@ async function loadPublicPartnerships() {
     const partnerships = result.items || [];
     if (!partnerships.length) {
       section.innerHTML = section.dataset.staticFallback || "";
+      if (APP_STATE.overview?.homepageContent) applyHomepageContent(APP_STATE.overview.homepageContent);
       return;
     }
+    const home = APP_STATE.overview?.homepageContent || {};
     section.innerHTML = `
       <div class="section-heading partnerships-heading">
-        <span class="eyebrow">شركاؤنا في النجاح</span>
-        <h2>شراكاتنا</h2>
-        <p>شراكات تطويرية تدعم جودة المشروع وتجربة العملاء.</p>
+        <span class="eyebrow">${escapeHTML(home.partnership_eyebrow || "شركاؤنا في النجاح")}</span>
+        <h2>${escapeHTML(home.partnership_title || "شراكاتنا")}</h2>
+        <p>${escapeHTML(home.partnership_text || "شراكات تطويرية تدعم جودة المشروع وتجربة العملاء.")}</p>
       </div>
       <div class="${partnerships.length === 1 ? "partnership-featured" : "partnerships-grid"}">
         ${partnerships.map((item) => renderPartnershipCard(item, { compact: true })).join("")}

@@ -1962,6 +1962,7 @@ def owner_settings_payload(conn: Any) -> dict[str, Any]:
         "permissionSettings": setting_json(conn, "permission_settings", {}),
         "systemSettings": system_settings,
         "mediaSettings": setting_json(conn, "media_settings", {}),
+        "homepageContent": setting_json(conn, "homepage_content", {}),
     }
 
 
@@ -2384,6 +2385,7 @@ def public_overview() -> Response:
                     "officeAddress": settings.get("office_address"),
                     "currency": settings.get("currency", "EGP"),
                 },
+                "homepageContent": setting_json(conn, "homepage_content", {}),
                 "summary": {
                     "totalApartments": len(apartments),
                     "availableApartments": sum(1 for apt in apartments if apt["status"] == "Available"),
@@ -4456,7 +4458,7 @@ def owner_patch_settings() -> Response:
         for key in {"office_name", "office_phone", "whatsapp_number", "office_address", "office_email", "currency", "office_logo"}:
             if key in office:
                 upsert_setting(conn, key, office[key])
-        for key in {"contract_template", "price_settings", "permission_settings", "system_settings", "media_settings"}:
+        for key in {"contract_template", "price_settings", "permission_settings", "system_settings", "media_settings", "homepage_content"}:
             camel = "".join([key.split("_")[0], *[part.title() for part in key.split("_")[1:]]])
             if camel in payload:
                 upsert_setting(conn, key, payload[camel])
@@ -4465,6 +4467,8 @@ def owner_patch_settings() -> Response:
         if isinstance(payload.get("contractTemplate"), dict) and "footer_text" in payload["contractTemplate"]:
             upsert_setting(conn, "statement_footer", payload["contractTemplate"]["footer_text"])
         audit(conn, admin["id"], "update", "settings", "owner_settings", "تم تعديل إعدادات المالك", old, payload)
+        with public_cache_lock:
+            public_response_cache.clear()
         return jsonify({"settings": owner_settings_payload(conn)})
 
 
