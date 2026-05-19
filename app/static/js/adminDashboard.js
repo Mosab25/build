@@ -739,6 +739,12 @@ function openProjectForm(project = null) {
       <div class="form-field"><label for="projectDisplayOrder">ترتيب العرض</label><input id="projectDisplayOrder" type="number" step="1" /></div>
       <div class="form-field full"><label for="projectCoverImage">صورة الغلاف</label><input id="projectCoverImage" placeholder="media/optimized/facade.webp" /></div>
       <div class="empty-state full"><strong>محتوى صفحة عرض المشروع</strong><br><span>هذه الحقول تتحكم في النصوص والأزرار داخل صفحة تفاصيل المشروع العامة.</span></div>
+      <label class="settings-check"><input id="projectDetailShowUnits" type="checkbox" /> <span>إظهار قسم الوحدات والمساحات</span></label>
+      <label class="settings-check"><input id="projectDetailShowGallery" type="checkbox" /> <span>إظهار قسم معرض الصور والفيديو</span></label>
+      <label class="settings-check"><input id="projectDetailShowUpdates" type="checkbox" /> <span>إظهار قسم تحديثات المشروع</span></label>
+      <label class="settings-check"><input id="projectDetailShowPartnerships" type="checkbox" /> <span>إظهار قسم الشراكات</span></label>
+      <label class="settings-check"><input id="projectDetailShowPortal" type="checkbox" /> <span>إظهار قسم بوابة العملاء</span></label>
+      <label class="settings-check"><input id="projectDetailShowContact" type="checkbox" /> <span>إظهار قسم تواصل معنا</span></label>
       <div class="form-field"><label for="projectDetailHeroEyebrow">Hero - العنوان الصغير</label><input id="projectDetailHeroEyebrow" /></div>
       <div class="form-field"><label for="projectDetailPrimaryLabel">Hero - زر بوابة العملاء</label><input id="projectDetailPrimaryLabel" /></div>
       <div class="form-field"><label for="projectDetailPrimaryUrl">Hero - رابط زر بوابة العملاء</label><input id="projectDetailPrimaryUrl" /></div>
@@ -781,6 +787,12 @@ function openProjectForm(project = null) {
   qs("#projectUnitsPerFloor").value = project?.unitsPerFloor ?? project?.units_per_floor ?? 0;
   qs("#projectDisplayOrder").value = project?.displayOrder ?? project?.display_order ?? 0;
   qs("#projectCoverImage").value = project?.coverImage || project?.cover_image || "";
+  qs("#projectDetailShowUnits").checked = detail.show_units !== false;
+  qs("#projectDetailShowGallery").checked = detail.show_gallery !== false;
+  qs("#projectDetailShowUpdates").checked = detail.show_updates !== false;
+  qs("#projectDetailShowPartnerships").checked = detail.show_partnerships !== false;
+  qs("#projectDetailShowPortal").checked = detail.show_portal !== false;
+  qs("#projectDetailShowContact").checked = detail.show_contact !== false;
   qs("#projectDetailHeroEyebrow").value = detail.hero_eyebrow || "";
   qs("#projectDetailPrimaryLabel").value = detail.primary_label || "";
   qs("#projectDetailPrimaryUrl").value = detail.primary_url || "";
@@ -848,6 +860,12 @@ async function saveProject(event) {
     cover_image: qs("#projectCoverImage").value.trim(),
     display_order: Number(qs("#projectDisplayOrder").value || 0),
     detail_content: {
+      show_units: qs("#projectDetailShowUnits").checked,
+      show_gallery: qs("#projectDetailShowGallery").checked,
+      show_updates: qs("#projectDetailShowUpdates").checked,
+      show_partnerships: qs("#projectDetailShowPartnerships").checked,
+      show_portal: qs("#projectDetailShowPortal").checked,
+      show_contact: qs("#projectDetailShowContact").checked,
       hero_eyebrow: qs("#projectDetailHeroEyebrow").value.trim(),
       primary_label: qs("#projectDetailPrimaryLabel").value.trim(),
       primary_url: qs("#projectDetailPrimaryUrl").value.trim(),

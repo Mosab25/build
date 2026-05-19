@@ -210,6 +210,7 @@ function renderProjectDetailContent(project, target) {
       </div>
     </section>
 
+    ${detail.show_units === false ? "" : `
     <section class="project-detail-section">
       <div class="section-heading">
         <span class="eyebrow">${escapeHTML(detail.units_eyebrow || "الوحدات والمساحات")}</span>
@@ -219,15 +220,19 @@ function renderProjectDetailContent(project, target) {
         ${renderProjectUnits(project)}
       </div>
     </section>
+    `}
 
-    <section class="project-detail-section">
+    ${detail.show_gallery === false ? "" : `
+    <section class="project-detail-section" data-project-gallery-section>
       <div class="section-heading">
         <span class="eyebrow">${escapeHTML(detail.gallery_eyebrow || "معرض الصور والفيديو")}</span>
         <h2>${escapeHTML(detail.gallery_title || "لقطات من المشروع والوحدات")}</h2>
       </div>
       <div class="gallery-grid project-gallery-grid" id="projectGalleryGrid"></div>
     </section>
+    `}
 
+    ${detail.show_updates === false ? "" : `
     <section class="project-detail-section project-updates-section" id="projectUpdatesInProject">
       <div class="section-heading">
         <span class="eyebrow">${escapeHTML(detail.updates_eyebrow || "آخر تحديثات المشروع")}</span>
@@ -236,7 +241,9 @@ function renderProjectDetailContent(project, target) {
       </div>
       <div class="updates-grid project-updates-grid" id="projectDetailUpdatesGrid"></div>
     </section>
+    `}
 
+    ${detail.show_partnerships === false ? "" : `
     <section class="project-detail-section project-partnership-section">
       <div class="section-heading">
         <span class="eyebrow">${escapeHTML(detail.partnerships_eyebrow || "الشراكات المرتبطة بالمشروع")}</span>
@@ -245,7 +252,9 @@ function renderProjectDetailContent(project, target) {
       </div>
       <div id="projectDetailPartnerships"></div>
     </section>
+    `}
 
+    ${detail.show_portal === false ? "" : `
     <section class="project-detail-section project-client-portal-card">
       <div>
         <span class="eyebrow">${escapeHTML(detail.portal_eyebrow || "بوابة عملاء بنيان")}</span>
@@ -254,7 +263,9 @@ function renderProjectDetailContent(project, target) {
       </div>
       <a class="btn primary" href="#client-access">${escapeHTML(detail.portal_button || "دخول بوابة العملاء")}</a>
     </section>
+    `}
 
+    ${detail.show_contact === false ? "" : `
     <section class="project-detail-section project-contact-card">
       <div>
         <span class="eyebrow">${escapeHTML(detail.contact_eyebrow || "تواصل معنا")}</span>
@@ -263,11 +274,12 @@ function renderProjectDetailContent(project, target) {
       </div>
       <a class="btn secondary" href="#contact">${escapeHTML(detail.contact_button || "تواصل معنا")}</a>
     </section>
+    `}
   `;
   bindProjectDetailActions();
-  renderProjectGallery();
-  loadProjectDetailUpdates(project.slug);
-  loadProjectDetailPartnerships(project.slug);
+  if (detail.show_gallery !== false) renderProjectGallery();
+  if (detail.show_updates !== false) loadProjectDetailUpdates(project.slug);
+  if (detail.show_partnerships !== false) loadProjectDetailPartnerships(project.slug);
 }
 
 function projectMetaCard(label, value) {
