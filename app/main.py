@@ -871,6 +871,7 @@ def ensure_projects_schema(conn) -> None:
     conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS units_count INTEGER NOT NULL DEFAULT 0")
     conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS units_per_floor INTEGER NOT NULL DEFAULT 0")
     conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS cover_image TEXT")
+    conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS detail_content TEXT")
     conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
     conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0")
     conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS created_by TEXT")
@@ -4816,6 +4817,15 @@ def normalize_project_slug(value: Any) -> str:
 
 def project_payload(row: Any) -> dict[str, Any]:
     payload = dict(row)
+    detail_content: dict[str, Any] = {}
+    raw_detail_content = payload.get("detail_content")
+    if isinstance(raw_detail_content, dict):
+        detail_content = raw_detail_content
+    elif raw_detail_content:
+        try:
+            detail_content = json.loads(raw_detail_content)
+        except (TypeError, json.JSONDecodeError):
+            detail_content = {}
     return {
         "id": payload.get("id"),
         "name": normalize_display_text(payload.get("name")),
@@ -4836,6 +4846,8 @@ def project_payload(row: Any) -> dict[str, Any]:
         "unitsPerFloor": int(payload.get("units_per_floor") or 0),
         "cover_image": payload.get("cover_image"),
         "coverImage": payload.get("cover_image"),
+        "detail_content": detail_content,
+        "detailContent": detail_content,
         "is_active": bool(payload.get("is_active")),
         "isActive": bool(payload.get("is_active")),
         "display_order": int(payload.get("display_order") or 0),
@@ -4890,6 +4902,9 @@ def validate_project_payload(payload: dict[str, Any], *, partial: bool = False, 
         cleaned["short_description"] = str(payload.get("shortDescription") or "").strip()
     if "coverImage" in payload and "cover_image" not in cleaned:
         cleaned["cover_image"] = str(payload.get("coverImage") or "").strip()
+    if "detail_content" in payload or "detailContent" in payload:
+        detail_content = payload.get("detail_content") if "detail_content" in payload else payload.get("detailContent")
+        cleaned["detail_content"] = json_dumps(sanitize_homepage_content(detail_content))
     int_fields = ("floors_count", "units_count", "units_per_floor", "display_order")
     aliases = {"floorsCount": "floors_count", "unitsCount": "units_count", "unitsPerFloor": "units_per_floor", "displayOrder": "display_order"}
     for alias, field in aliases.items():

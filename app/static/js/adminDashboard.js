@@ -720,6 +720,7 @@ function archiveProject(projectId, projectTitle) {
 
 function openProjectForm(project = null) {
   const isEdit = Boolean(project?.id);
+  const detail = project?.detailContent || project?.detail_content || {};
   openModal(`
     <span class="eyebrow">المشاريع</span>
     <h2>${isEdit ? "تعديل مشروع" : "إضافة مشروع"}</h2>
@@ -737,6 +738,32 @@ function openProjectForm(project = null) {
       <div class="form-field"><label for="projectUnitsPerFloor">الوحدات في كل دور</label><input id="projectUnitsPerFloor" type="number" min="0" step="1" /></div>
       <div class="form-field"><label for="projectDisplayOrder">ترتيب العرض</label><input id="projectDisplayOrder" type="number" step="1" /></div>
       <div class="form-field full"><label for="projectCoverImage">صورة الغلاف</label><input id="projectCoverImage" placeholder="media/optimized/facade.webp" /></div>
+      <div class="empty-state full"><strong>محتوى صفحة عرض المشروع</strong><br><span>هذه الحقول تتحكم في النصوص والأزرار داخل صفحة تفاصيل المشروع العامة.</span></div>
+      <div class="form-field"><label for="projectDetailHeroEyebrow">Hero - العنوان الصغير</label><input id="projectDetailHeroEyebrow" /></div>
+      <div class="form-field"><label for="projectDetailPrimaryLabel">Hero - زر بوابة العملاء</label><input id="projectDetailPrimaryLabel" /></div>
+      <div class="form-field"><label for="projectDetailPrimaryUrl">Hero - رابط زر بوابة العملاء</label><input id="projectDetailPrimaryUrl" /></div>
+      <div class="form-field"><label for="projectDetailSecondaryLabel">Hero - زر التحديثات</label><input id="projectDetailSecondaryLabel" /></div>
+      <div class="form-field"><label for="projectDetailAboutEyebrow">نبذة المشروع - العنوان الصغير</label><input id="projectDetailAboutEyebrow" /></div>
+      <div class="form-field"><label for="projectDetailInfoEyebrow">بيانات المشروع - العنوان الصغير</label><input id="projectDetailInfoEyebrow" /></div>
+      <div class="form-field"><label for="projectDetailInfoTitle">بيانات المشروع - العنوان</label><input id="projectDetailInfoTitle" /></div>
+      <div class="form-field"><label for="projectDetailUnitsEyebrow">الوحدات - العنوان الصغير</label><input id="projectDetailUnitsEyebrow" /></div>
+      <div class="form-field"><label for="projectDetailUnitsTitle">الوحدات - العنوان</label><input id="projectDetailUnitsTitle" /></div>
+      <div class="form-field"><label for="projectDetailGalleryEyebrow">المعرض - العنوان الصغير</label><input id="projectDetailGalleryEyebrow" /></div>
+      <div class="form-field"><label for="projectDetailGalleryTitle">المعرض - العنوان</label><input id="projectDetailGalleryTitle" /></div>
+      <div class="form-field"><label for="projectDetailUpdatesEyebrow">التحديثات - العنوان الصغير</label><input id="projectDetailUpdatesEyebrow" /></div>
+      <div class="form-field"><label for="projectDetailUpdatesTitle">التحديثات - العنوان</label><input id="projectDetailUpdatesTitle" /></div>
+      <div class="form-field full"><label for="projectDetailUpdatesText">التحديثات - الوصف</label><textarea id="projectDetailUpdatesText"></textarea></div>
+      <div class="form-field"><label for="projectDetailPartnershipsEyebrow">الشراكات - العنوان الصغير</label><input id="projectDetailPartnershipsEyebrow" /></div>
+      <div class="form-field"><label for="projectDetailPartnershipsTitle">الشراكات - العنوان</label><input id="projectDetailPartnershipsTitle" /></div>
+      <div class="form-field full"><label for="projectDetailPartnershipsText">الشراكات - الوصف</label><textarea id="projectDetailPartnershipsText"></textarea></div>
+      <div class="form-field"><label for="projectDetailPortalEyebrow">بوابة العملاء - العنوان الصغير</label><input id="projectDetailPortalEyebrow" /></div>
+      <div class="form-field"><label for="projectDetailPortalTitle">بوابة العملاء - العنوان</label><input id="projectDetailPortalTitle" /></div>
+      <div class="form-field full"><label for="projectDetailPortalText">بوابة العملاء - الوصف</label><textarea id="projectDetailPortalText"></textarea></div>
+      <div class="form-field"><label for="projectDetailPortalButton">بوابة العملاء - الزر</label><input id="projectDetailPortalButton" /></div>
+      <div class="form-field"><label for="projectDetailContactEyebrow">التواصل - العنوان الصغير</label><input id="projectDetailContactEyebrow" /></div>
+      <div class="form-field"><label for="projectDetailContactTitle">التواصل - العنوان</label><input id="projectDetailContactTitle" /></div>
+      <div class="form-field full"><label for="projectDetailContactText">التواصل - الوصف</label><textarea id="projectDetailContactText"></textarea></div>
+      <div class="form-field"><label for="projectDetailContactButton">التواصل - الزر</label><input id="projectDetailContactButton" /></div>
       <button class="btn primary full" type="submit">${isEdit ? "حفظ التعديل" : "حفظ المشروع"}</button>
     </form>
   `);
@@ -754,6 +781,31 @@ function openProjectForm(project = null) {
   qs("#projectUnitsPerFloor").value = project?.unitsPerFloor ?? project?.units_per_floor ?? 0;
   qs("#projectDisplayOrder").value = project?.displayOrder ?? project?.display_order ?? 0;
   qs("#projectCoverImage").value = project?.coverImage || project?.cover_image || "";
+  qs("#projectDetailHeroEyebrow").value = detail.hero_eyebrow || "";
+  qs("#projectDetailPrimaryLabel").value = detail.primary_label || "";
+  qs("#projectDetailPrimaryUrl").value = detail.primary_url || "";
+  qs("#projectDetailSecondaryLabel").value = detail.secondary_label || "";
+  qs("#projectDetailAboutEyebrow").value = detail.about_eyebrow || "";
+  qs("#projectDetailInfoEyebrow").value = detail.info_eyebrow || "";
+  qs("#projectDetailInfoTitle").value = detail.info_title || "";
+  qs("#projectDetailUnitsEyebrow").value = detail.units_eyebrow || "";
+  qs("#projectDetailUnitsTitle").value = detail.units_title || "";
+  qs("#projectDetailGalleryEyebrow").value = detail.gallery_eyebrow || "";
+  qs("#projectDetailGalleryTitle").value = detail.gallery_title || "";
+  qs("#projectDetailUpdatesEyebrow").value = detail.updates_eyebrow || "";
+  qs("#projectDetailUpdatesTitle").value = detail.updates_title || "";
+  qs("#projectDetailUpdatesText").value = detail.updates_text || "";
+  qs("#projectDetailPartnershipsEyebrow").value = detail.partnerships_eyebrow || "";
+  qs("#projectDetailPartnershipsTitle").value = detail.partnerships_title || "";
+  qs("#projectDetailPartnershipsText").value = detail.partnerships_text || "";
+  qs("#projectDetailPortalEyebrow").value = detail.portal_eyebrow || "";
+  qs("#projectDetailPortalTitle").value = detail.portal_title || "";
+  qs("#projectDetailPortalText").value = detail.portal_text || "";
+  qs("#projectDetailPortalButton").value = detail.portal_button || "";
+  qs("#projectDetailContactEyebrow").value = detail.contact_eyebrow || "";
+  qs("#projectDetailContactTitle").value = detail.contact_title || "";
+  qs("#projectDetailContactText").value = detail.contact_text || "";
+  qs("#projectDetailContactButton").value = detail.contact_button || "";
   if (!isEdit) {
     qs("#projectName").addEventListener("input", () => {
       if (!qs("#projectSlug").dataset.touched) qs("#projectSlug").value = slugifyProjectInput(qs("#projectName").value);
@@ -795,6 +847,33 @@ async function saveProject(event) {
     units_per_floor: Number(qs("#projectUnitsPerFloor").value || 0),
     cover_image: qs("#projectCoverImage").value.trim(),
     display_order: Number(qs("#projectDisplayOrder").value || 0),
+    detail_content: {
+      hero_eyebrow: qs("#projectDetailHeroEyebrow").value.trim(),
+      primary_label: qs("#projectDetailPrimaryLabel").value.trim(),
+      primary_url: qs("#projectDetailPrimaryUrl").value.trim(),
+      secondary_label: qs("#projectDetailSecondaryLabel").value.trim(),
+      about_eyebrow: qs("#projectDetailAboutEyebrow").value.trim(),
+      info_eyebrow: qs("#projectDetailInfoEyebrow").value.trim(),
+      info_title: qs("#projectDetailInfoTitle").value.trim(),
+      units_eyebrow: qs("#projectDetailUnitsEyebrow").value.trim(),
+      units_title: qs("#projectDetailUnitsTitle").value.trim(),
+      gallery_eyebrow: qs("#projectDetailGalleryEyebrow").value.trim(),
+      gallery_title: qs("#projectDetailGalleryTitle").value.trim(),
+      updates_eyebrow: qs("#projectDetailUpdatesEyebrow").value.trim(),
+      updates_title: qs("#projectDetailUpdatesTitle").value.trim(),
+      updates_text: qs("#projectDetailUpdatesText").value.trim(),
+      partnerships_eyebrow: qs("#projectDetailPartnershipsEyebrow").value.trim(),
+      partnerships_title: qs("#projectDetailPartnershipsTitle").value.trim(),
+      partnerships_text: qs("#projectDetailPartnershipsText").value.trim(),
+      portal_eyebrow: qs("#projectDetailPortalEyebrow").value.trim(),
+      portal_title: qs("#projectDetailPortalTitle").value.trim(),
+      portal_text: qs("#projectDetailPortalText").value.trim(),
+      portal_button: qs("#projectDetailPortalButton").value.trim(),
+      contact_eyebrow: qs("#projectDetailContactEyebrow").value.trim(),
+      contact_title: qs("#projectDetailContactTitle").value.trim(),
+      contact_text: qs("#projectDetailContactText").value.trim(),
+      contact_button: qs("#projectDetailContactButton").value.trim(),
+    },
   };
   try {
     setButtonLoading(submitButton, true, "جاري حفظ المشروع...");

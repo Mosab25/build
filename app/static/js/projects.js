@@ -161,15 +161,17 @@ async function renderProjectDetail(slug) {
 
 function renderProjectDetailContent(project, target) {
   const coverImage = projectCoverImage(project);
+  const detail = project.detailContent || project.detail_content || {};
+  const projectName = project.name || "";
   target.innerHTML = `
     <section class="project-hero">
       <div class="project-hero-copy">
-        <span class="eyebrow">مشروع من Bonyan Developments</span>
+        <span class="eyebrow">${escapeHTML(detail.hero_eyebrow || "مشروع من Bonyan Developments")}</span>
         <h1>${escapeHTML(project.name)}</h1>
         <p>${escapeHTML(project.description)}</p>
         <div class="project-hero-actions">
-          <a class="btn primary" href="#client-access">دخول بوابة العملاء</a>
-          <button class="btn secondary" type="button" data-project-scroll="projectUpdatesInProject">مشاهدة التحديثات</button>
+          <a class="btn primary" href="${escapeHTML(detail.primary_url || "#client-access")}">${escapeHTML(detail.primary_label || "دخول بوابة العملاء")}</a>
+          <button class="btn secondary" type="button" data-project-scroll="projectUpdatesInProject">${escapeHTML(detail.secondary_label || "مشاهدة التحديثات")}</button>
         </div>
       </div>
       <div class="project-hero-media">
@@ -181,7 +183,7 @@ function renderProjectDetailContent(project, target) {
 
     <section class="project-detail-section" id="projectAboutInProject">
       <div class="section-heading">
-        <span class="eyebrow">نبذة عن المشروع</span>
+        <span class="eyebrow">${escapeHTML(detail.about_eyebrow || "نبذة عن المشروع")}</span>
         <h2>${escapeHTML(project.name)}</h2>
         <p>${escapeHTML(project.shortDescription)}</p>
       </div>
@@ -189,8 +191,8 @@ function renderProjectDetailContent(project, target) {
 
     <section class="project-detail-section">
       <div class="section-heading">
-        <span class="eyebrow">بيانات المشروع</span>
-        <h2>بيانات واضحة للعملاء والمتابعة</h2>
+        <span class="eyebrow">${escapeHTML(detail.info_eyebrow || "بيانات المشروع")}</span>
+        <h2>${escapeHTML(detail.info_title || "بيانات واضحة للعملاء والمتابعة")}</h2>
       </div>
       <div class="project-info-grid">
         ${projectMetaCard("الموقع", project.location)}
@@ -210,8 +212,8 @@ function renderProjectDetailContent(project, target) {
 
     <section class="project-detail-section">
       <div class="section-heading">
-        <span class="eyebrow">الوحدات والمساحات</span>
-        <h2>توزيع الوحدات على الأدوار</h2>
+        <span class="eyebrow">${escapeHTML(detail.units_eyebrow || "الوحدات والمساحات")}</span>
+        <h2>${escapeHTML(detail.units_title || "توزيع الوحدات على الأدوار")}</h2>
       </div>
       <div class="project-units-grid">
         ${renderProjectUnits(project)}
@@ -220,46 +222,46 @@ function renderProjectDetailContent(project, target) {
 
     <section class="project-detail-section">
       <div class="section-heading">
-        <span class="eyebrow">معرض الصور والفيديو</span>
-        <h2>لقطات من المشروع والوحدات</h2>
+        <span class="eyebrow">${escapeHTML(detail.gallery_eyebrow || "معرض الصور والفيديو")}</span>
+        <h2>${escapeHTML(detail.gallery_title || "لقطات من المشروع والوحدات")}</h2>
       </div>
       <div class="gallery-grid project-gallery-grid" id="projectGalleryGrid"></div>
     </section>
 
     <section class="project-detail-section project-updates-section" id="projectUpdatesInProject">
       <div class="section-heading">
-        <span class="eyebrow">آخر تحديثات المشروع</span>
-        <h2>تحديثات المشروع</h2>
-        <p>آخر التحديثات المنشورة الخاصة بمشروع ${escapeHTML(project.name)}.</p>
+        <span class="eyebrow">${escapeHTML(detail.updates_eyebrow || "آخر تحديثات المشروع")}</span>
+        <h2>${escapeHTML(detail.updates_title || "تحديثات المشروع")}</h2>
+        <p>${escapeHTML(detail.updates_text || `آخر التحديثات المنشورة الخاصة بمشروع ${projectName}.`)}</p>
       </div>
       <div class="updates-grid project-updates-grid" id="projectDetailUpdatesGrid"></div>
     </section>
 
     <section class="project-detail-section project-partnership-section">
       <div class="section-heading">
-        <span class="eyebrow">الشراكات المرتبطة بالمشروع</span>
-        <h2>شراكات تطوير وتنفيذ</h2>
-        <p>${project.slug === "abd-elgalil" ? "Bonyan Developments لمشروع عقاري في أرض عبدالجليل، برؤية تركز على جودة التنفيذ، وضوح المتابعة، وتعزيز ثقة العملاء." : "شراكات تطوير وتنفيذ مرتبطة بالمشروع عند توفرها."}</p>
+        <span class="eyebrow">${escapeHTML(detail.partnerships_eyebrow || "الشراكات المرتبطة بالمشروع")}</span>
+        <h2>${escapeHTML(detail.partnerships_title || "شراكات تطوير وتنفيذ")}</h2>
+        <p>${escapeHTML(detail.partnerships_text || (project.slug === "abd-elgalil" ? "Bonyan Developments لمشروع عقاري في أرض عبدالجليل، برؤية تركز على جودة التنفيذ، وضوح المتابعة، وتعزيز ثقة العملاء." : "شراكات تطوير وتنفيذ مرتبطة بالمشروع عند توفرها."))}</p>
       </div>
       <div id="projectDetailPartnerships"></div>
     </section>
 
     <section class="project-detail-section project-client-portal-card">
       <div>
-        <span class="eyebrow">بوابة عملاء بنيان</span>
-        <h2>متابعة الحجز والمدفوعات</h2>
-        <p>يمكن للعملاء متابعة بيانات الحجز، الوحدات، المدفوعات، والمتبقي من خلال كود الحجز.</p>
+        <span class="eyebrow">${escapeHTML(detail.portal_eyebrow || "بوابة عملاء بنيان")}</span>
+        <h2>${escapeHTML(detail.portal_title || "متابعة الحجز والمدفوعات")}</h2>
+        <p>${escapeHTML(detail.portal_text || "يمكن للعملاء متابعة بيانات الحجز، الوحدات، المدفوعات، والمتبقي من خلال كود الحجز.")}</p>
       </div>
-      <a class="btn primary" href="#client-access">دخول بوابة العملاء</a>
+      <a class="btn primary" href="#client-access">${escapeHTML(detail.portal_button || "دخول بوابة العملاء")}</a>
     </section>
 
     <section class="project-detail-section project-contact-card">
       <div>
-        <span class="eyebrow">تواصل معنا</span>
-        <h2>اسأل عن ${escapeHTML(project.name)}</h2>
-        <p>فريق بنيان جاهز للإجابة على استفسارات المشروع ومتابعة بيانات الحجز.</p>
+        <span class="eyebrow">${escapeHTML(detail.contact_eyebrow || "تواصل معنا")}</span>
+        <h2>${escapeHTML(detail.contact_title || `اسأل عن ${projectName}`)}</h2>
+        <p>${escapeHTML(detail.contact_text || "فريق بنيان جاهز للإجابة على استفسارات المشروع ومتابعة بيانات الحجز.")}</p>
       </div>
-      <a class="btn secondary" href="#contact">تواصل معنا</a>
+      <a class="btn secondary" href="#contact">${escapeHTML(detail.contact_button || "تواصل معنا")}</a>
     </section>
   `;
   bindProjectDetailActions();
