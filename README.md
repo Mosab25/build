@@ -83,11 +83,11 @@ gunicorn -c gunicorn.conf.py app.main:app
 Free Render services can sleep after inactivity. To reduce cold starts, create a monitor in UptimeRobot, Cron-job, or a similar ping service:
 
 - Monitor type: HTTP(s)
-- URL: `https://real-estate-system-210.onrender.com/health`
+- URL: `https://real-estate-system-21r0.onrender.com/ping`
 - Interval: every 10 minutes
 - Expected status: `200 OK`
 
-The `/health` endpoint is public and intentionally lightweight. If you only need a plain text response, `/ping` is also available and returns `ok`.
+The `/ping` endpoint is public and intentionally avoids the database for keep-alive monitors. The `/health` endpoint is also available and returns a JSON status response.
 
 ## Docker
 

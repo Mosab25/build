@@ -9,7 +9,7 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Render health endpoint
+      - name: Ping Render keep-alive endpoint
         run: |
           curl --fail --silent --show-error --max-time 20 --retry 2 \
-            https://real-estate-system-210.onrender.com/health
+            https://real-estate-system-21r0.onrender.com/ping
