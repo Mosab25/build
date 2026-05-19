@@ -1939,6 +1939,20 @@ def upsert_setting(conn: Any, key: str, value: Any) -> None:
     )
 
 
+def sanitize_homepage_content(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    sanitized: dict[str, Any] = {}
+    for key, item in value.items():
+        if isinstance(item, bool):
+            sanitized[str(key)] = item
+        elif item is None:
+            sanitized[str(key)] = ""
+        else:
+            sanitized[str(key)] = str(item).strip()
+    return sanitized
+
+
 def owner_settings_payload(conn: Any) -> dict[str, Any]:
     settings = all_settings(conn)
     contract_template = setting_json(conn, "contract_template", {})
@@ -4461,7 +4475,8 @@ def owner_patch_settings() -> Response:
         for key in {"contract_template", "price_settings", "permission_settings", "system_settings", "media_settings", "homepage_content"}:
             camel = "".join([key.split("_")[0], *[part.title() for part in key.split("_")[1:]]])
             if camel in payload:
-                upsert_setting(conn, key, payload[camel])
+                setting_value = sanitize_homepage_content(payload[camel]) if key == "homepage_content" else payload[camel]
+                upsert_setting(conn, key, setting_value)
         if isinstance(payload.get("systemSettings"), dict) and "receipt_prefix" in payload["systemSettings"]:
             upsert_setting(conn, "receipt_prefix", payload["systemSettings"]["receipt_prefix"])
         if isinstance(payload.get("contractTemplate"), dict) and "footer_text" in payload["contractTemplate"]:
