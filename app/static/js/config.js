@@ -48,6 +48,7 @@ const STATUS_LABELS = {
   overdue: "متأخر السداد",
   draft: "مسودة",
   published: "منشور",
+  archived: "مؤرشف",
   pending_approval: "بانتظار موافقة الإدارة",
   revision_requested: "مطلوب تعديل",
   approved: "تمت الموافقة",

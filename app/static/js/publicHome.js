@@ -24,7 +24,7 @@ function applyOfficeSettings(settings) {
   APP_CONFIG.officePhone = settings.officePhone || APP_CONFIG.officePhone;
   APP_CONFIG.whatsappNumber = settings.whatsappNumber || APP_CONFIG.whatsappNumber;
   APP_CONFIG.location = settings.officeAddress || APP_CONFIG.location;
-  qs("#publicWhatsapp").href = `https://wa.me/${APP_CONFIG.whatsappNumber}?text=${encodeURIComponent("مرحبًا، أريد الاستفسار عن مشروع أرض عبدالجليل.")}`;
+  qs("#publicWhatsapp").href = `https://wa.me/${APP_CONFIG.whatsappNumber}?text=${encodeURIComponent("مرحبًا، أريد الاستفسار عن مشاريع بنيان للتطوير العقاري.")}`;
   qs("#publicPhone").href = `tel:+2${APP_CONFIG.officePhone}`;
 }
 

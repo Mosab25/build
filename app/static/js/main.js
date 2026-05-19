@@ -11,6 +11,8 @@ async function initApp() {
   initAuth();
   initClientPortal();
   initLatestUpdates();
+  if (typeof initPartnerships === "function") initPartnerships();
+  if (typeof initProjects === "function") initProjects();
   initPublicHome();
   scheduleAfterFirstPaint(initGallery);
   if (shouldRestoreDashboardSession()) {

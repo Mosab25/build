@@ -245,7 +245,11 @@ async function openPaymentForm(clientId = "", payment = null) {
 }
 
 function paymentClientOptionLabel(client) {
-  const unitCode = client.apartment?.unitCode || "بدون شقة";
+  const units = (client.apartments || (client.apartment ? [client.apartment] : []))
+    .map((apartment) => apartment?.unitCode || apartment?.unit_code)
+    .filter(Boolean)
+    .join("، ");
+  const unitCode = units || "بدون شقة";
   return `${client.name} - ${client.code} - ${unitCode} - المتبقي ${formatMoney(client.remainingAmount || 0)}`;
 }
 
